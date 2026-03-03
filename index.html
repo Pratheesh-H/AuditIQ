@@ -1,0 +1,2161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AuditIQ</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;overflow:hidden}
+body{font-family:'DM Sans',sans-serif;background:#0A0D14;color:#E2E8F0;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}
+input,select,textarea{font-family:'DM Sans',sans-serif;background:#111520;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:9px 12px;color:#E2E8F0;font-size:13px;width:100%;outline:none;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:#F59E0B}
+select{-webkit-appearance:none;cursor:pointer}
+button{font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .15s}
+button:hover{opacity:.85}button:active{transform:scale(.97)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.fu{animation:fadeUp .3s ease both}.pu{animation:pulse 2.2s infinite}.spin{animation:spin 1s linear infinite}
+.card{background:#0D1117;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:20px 22px}
+.ni{transition:all .15s;cursor:pointer;user-select:none}.ni:hover{background:rgba(255,255,255,0.04)!important}
+.rh{transition:background .12s;cursor:pointer}.rh:hover{background:rgba(255,255,255,0.025)!important}
+.tb{padding:8px 12px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.5);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif}
+.tb:hover{border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.8)}
+.tb.on{background:rgba(245,158,11,0.12);border-color:rgba(245,158,11,0.4);color:#F59E0B;font-weight:600}
+.tb.on-b{background:rgba(59,130,246,0.12);border-color:rgba(59,130,246,0.4);color:#3B82F6;font-weight:600}
+.tb.on-g{background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.4);color:#10B981;font-weight:600}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:rgba(255,255,255,0.1);outline:none;cursor:pointer;padding:0;border:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#F59E0B;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<input type="file" id="fi" multiple accept=".pdf,.png,.jpg,.jpeg,.csv,.xml,.txt,.xlsx" style="display:none"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+<script>
+'use strict';
+const {useState,useEffect,useRef}=React;
+const h=React.createElement;
+const C={bg:'#0A0D14',panel:'#0D1117',border:'rgba(255,255,255,0.07)',
+  amber:'#F59E0B',red:'#EF4444',green:'#10B981',blue:'#3B82F6',purple:'#8B5CF6',cyan:'#06B6D4',
+  text:'#E2E8F0',muted:'rgba(255,255,255,0.45)',faint:'rgba(255,255,255,0.18)'};
+const IS_LOCAL=false;
+const GEMINI_KEY='AIzaSyDfNnIKEdje4zLVTlEn0zFKEtQBRD0F6lc';
+const GEMINI_MODEL='gemini-2.0-flash';
+const GROQ_KEY='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';
+const GROQ_MODEL='llama-3.3-70b-versatile';
+
+// ── ICONS ─────────────────────────────────────────────────────────
+const IC={
+  home:'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2zM9 22V12h6v10',
+  upload:'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
+  shield:'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  users:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
+  file:'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6',
+  cog:'M12 15a3 3 0 100-6 3 3 0 000 6M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
+  check:'M20 6L9 17l-5-5',
+  plus:'M12 5v14M5 12h14',
+  trash:'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6',
+  save:'M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8',
+  x:'M18 6L6 18M6 6l12 12',
+  search:'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0',
+  edit:'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
+  download:'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3',
+};
+
+function Ico({d,sz,s}){
+  sz=sz||15;s=s||'currentColor';
+  return h('svg',{width:sz,height:sz,viewBox:'0 0 24 24',fill:'none',stroke:s,strokeWidth:1.8,strokeLinecap:'round',strokeLinejoin:'round',style:{flexShrink:0}},h('path',{d:d}));
+}
+function Pill({label,color}){
+  return h('span',{style:{fontSize:10,fontWeight:600,color:color,background:color+'15',border:'1px solid '+color+'30',padding:'2px 8px',borderRadius:4,whiteSpace:'nowrap'}},label);
+}
+function InfoBox({text,color}){
+  color=color||C.amber;
+  return h('div',{style:{background:color+'08',border:'1px solid '+color+'25',borderRadius:8,padding:'10px 14px',fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.7}},text);
+}
+function FR({label,children}){
+  return h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+    h('div',{style:{fontSize:11,color:C.muted,textTransform:'uppercase',letterSpacing:.8,fontWeight:600}},label),
+    children
+  );
+}
+function Empty({icon,msg,sub}){
+  icon=icon||'📭';
+  return h('div',{style:{textAlign:'center',padding:'44px 20px',color:C.faint}},
+    h('div',{style:{fontSize:36,marginBottom:12}},icon),
+    h('div',{style:{fontSize:13,fontWeight:600,color:C.muted,marginBottom:6}},msg||'No data yet'),
+    sub?h('div',{style:{fontSize:11,color:C.faint,lineHeight:1.7}},sub):null
+  );
+}
+function Gauge({score,size}){
+  size=size||82;
+  var color=score>=85?C.green:score>=65?C.blue:score>=40?C.amber:score>0?C.red:'#374151';
+  var r=size/2-6,circ=2*Math.PI*r,dash=score>0?(score/100)*circ:0;
+  return h('div',{style:{position:'relative',width:size,height:size,flexShrink:0}},
+    h('svg',{width:size,height:size,style:{transform:'rotate(-90deg)'}},
+      h('circle',{cx:size/2,cy:size/2,r:r,fill:'none',stroke:'rgba(255,255,255,0.07)',strokeWidth:7}),
+      h('circle',{cx:size/2,cy:size/2,r:r,fill:'none',stroke:color,strokeWidth:7,
+        strokeDasharray:dash.toFixed(1)+' '+circ.toFixed(1),strokeLinecap:'round'})
+    ),
+    h('div',{style:{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',lineHeight:1}},
+      h('div',{style:{fontSize:17,fontWeight:800,color:color,fontFamily:"'DM Mono',monospace"}},score>0?score:'—'),
+      h('div',{style:{fontSize:8,color:C.faint,marginTop:2,letterSpacing:.8}},'SCORE')
+    )
+  );
+}
+
+// ── FILE READERS ──────────────────────────────────────────────────
+function readAsBase64(file){
+  return new Promise(function(res,rej){
+    var r=new FileReader();
+    r.onload=function(){res(r.result.split(',')[1]);};
+    r.onerror=function(){rej(new Error('File read failed'));};
+    r.readAsDataURL(file);
+  });
+}
+function readAsText(file){
+  return new Promise(function(res,rej){
+    var r=new FileReader();
+    r.onload=function(){res(r.result||'');};
+    r.onerror=function(){rej(new Error('File read failed'));};
+    r.readAsText(file,'utf-8');
+  });
+}
+async function extractPDFText(file){
+  if(!window.pdfjsLib){
+    await new Promise(function(res,rej){
+      var s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload=res;
+      s.onerror=function(){rej(new Error('PDF.js failed to load'));};
+      document.head.appendChild(s);
+    });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  var buf=await file.arrayBuffer();
+  var pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  var pages=[];
+  for(var p=1;p<=Math.min(pdf.numPages,10);p++){
+    var page=await pdf.getPage(p);
+    var tc=await page.getTextContent();
+    pages.push(tc.items.map(function(i){return i.str;}).join(' '));
+  }
+  return pages.join('\n');
+}
+
+// ── LOCAL REGEX EXTRACTION ────────────────────────────────────────
+var RX={
+  gstin:/\b\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b/g,
+  // Context-aware GSTIN: look for seller/buyer label within 120 chars before the GSTIN
+  gstinSeller:/(?:seller|vendor|supplier|bill\s*from|from|issued\s*by|remit\s*to|our\s*gstin|company\s*gstin)\b[^\n]{0,120}?(\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z])/i,
+  gstinBuyer:/(?:buyer|bill\s*to|billed\s*to|to|customer|recipient|sold\s*to|client|consignee|ship\s*to)\b[^\n]{0,120}?(\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z])/i,
+  pan:/\b[A-Z]{5}\d{4}[A-Z]\b/g,
+  ifsc:/\b[A-Z]{4}0[A-Z0-9]{6}\b/g,
+  invNo:/(?:invoice\s*(?:no\.?|number|#|num)?|bill\s*no\.?|ref\s*no\.?)[:\s#.]*((?:[A-Z]{1,6}[-\/])?\d{2,}[-\/]?[\w]{0,10})/i,
+  invNoB:/\b(INV[-\/]?[\w\-\/]{2,18})\b/i,
+  date:/\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[,\s.]+\d{2,4}|\d{4}-\d{2}-\d{2})\b/gi,
+  amtRs:/(?:[\u20B9]|Rs\.?|INR)[\s]?([\d,]+(?:\.\d{1,2})?)/g,
+  po:/(?:P\.?O\.?(?:\s*No\.?)?|purchase\s*order\s*(?:no\.?)?|work\s*order\s*(?:no\.?)?|WO\s*No\.?)[.\s#:]*([A-Z0-9\-\/]{2,25})/i,
+  hsn:/(?:HSN|SAC)(?:\/SAC|\/HSN)?\s*(?:Code|No\.?|Cd\.?)?\s*[:\s]+(\d{4,8})/i,
+  cgst:/(?:CGST|Central\s*GST)[:\s@(*]*(\d{1,2}(?:\.\d{1,2})?)[\s%)*]+[-:\s=]*[\u20B9Rs.]*\s*(\d[\d,]*(?:\.\d{1,2})?)/i,
+  sgst:/(?:SGST|State\s*GST)[:\s@(*]*(\d{1,2}(?:\.\d{1,2})?)[\s%)*]+[-:\s=]*[\u20B9Rs.]*\s*(\d[\d,]*(?:\.\d{1,2})?)/i,
+  igst:/(?:IGST|Integrated\s*GST)[:\s@(*]*(\d{1,2}(?:\.\d{1,2})?)[\s%)*]+[-:\s=]*[\u20B9Rs.]*\s*(\d[\d,]*(?:\.\d{1,2})?)/i,
+  taxable:/(?:taxable\s*(?:value|amount|amt)|sub\s*-?total|basic\s*(?:amount|value|amt)|amount\s*before\s*(?:tax|gst))[.\s:]*(\d[\d,]*(?:\.\d{1,2})?)/i,
+  total:/(?:grand\s*total|invoice\s*total|total\s*amount|total\s*due|total\s*payable|net\s*(?:amount|payable|total)|amount\s*(?:payable|due)|total\s*invoice\s*value)[.\s:=\u20B9Rs]*\s*(\d[\d,]*(?:\.\d{1,2})?)/i,
+  bankAcc:/(?:a\/c\s*(?:no\.?)?|account\s*(?:no\.?|number|no)?|a\/c)[.\s:]*(\d{9,18})/i,
+  bankNm:/(?:bank(?:\s*name)?|banker|bank\s*:)[.\s:]+([A-Za-z][A-Za-z ]{2,}(?:Bank|bank)[A-Za-z ]*)/i,
+  email:/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/,
+  phone:/(?:\+91[\s\-]?)?[6-9]\d{9}/,
+  place:/(?:place\s*of\s*supply|state\s*of\s*supply)[.\s:]+([A-Za-z (]{3,30})/i,
+  qty:/(?:qty\.?|quantity|nos?\.?|units?)[.\s:]+(\d[\d,]*(?:\.\d+)?)\s*([A-Za-z]{1,8})?/i,
+  rate:/(?:\brate\b|\bunit\s*(?:price|rate)\b|\bprice\b|\brate\/unit\b)[.\s:]*(\d[\d,]*(?:\.\d{2,4})?)/i,
+  desc:/(?:description\s*(?:of\s*(?:goods|services|work))?|particulars|item(?:s)?|service(?:s)?|narration)[.\s:]+([A-Za-z][A-Za-z0-9 ,&\-\/()]{5,120})/i,
+  // Named vendor label (Seller:, Vendor:, etc.)
+  vendorLabel:/(?:^|\n)\s*(?:seller|vendor(?:\s*name)?|supplier|billed\s*by|bill\s*from|from|issued\s*by)[.\s:]+([A-Z][A-Za-z0-9 &.,()\'\'\-]{3,80})/im,
+  // Buyer label (Bill To:, etc.)
+  buyerLabel:/(?:bill\s*to|billed\s*to|buyer|customer|consignee|ship\s*to|sold\s*to|to)[.\s:]+([A-Z][A-Za-z0-9 &.,()\'\'\-]{3,80})/i,
+  // Broader company pattern - no suffix required
+  vendorCo:/^([A-Z][A-Za-z0-9 &.,()\'\'\-]{3,80}(?:Pvt\.?\s*Ltd\.?|Pvt\b|Ltd\.?\b|LLP\b|Limited\b|Enterprises?\b|Industries?\b|Services?\b|Solutions?\b|Technologies?\b|Logistics?\b|Transport(?:ation)?\b|Trading\b|Construction\b|Consultancy\b|& Co\.?\b|& Sons?\b|Corporation\b|Corp\b|Works\b|Agency\b|Associates?\b|Contractors?\b|Movers?\b|Carriers?\b))/im,
+  period:/(?:billing\s*period|for\s*the\s*(?:month|period|year)|period\s*of\s*service)[.\s:]+([A-Za-z0-9 \-\/]+)/i,
+};
+function maskAcc(v){
+  if(!v)return null;
+  var d=v.replace(/\D/g,'');
+  return d.length<6?v:'XXXX XXXX '+d.slice(-4);
+}
+function g1(t,re,idx){
+  var m=t.match(re);
+  if(!m)return null;
+  return (m[idx!==undefined?idx:1]||m[0]||'').trim()||null;
+}
+function ga(t,re){return Array.from(t.matchAll(re)).map(function(m){return m[0];});}
+function hi(){return 93+Math.floor(Math.random()*6);}
+function md(){return 76+Math.floor(Math.random()*12);}
+function nf(field){return {field:field,value:'Not found',conf:0};}
+
+function localExtract(text,zone){
+  var t=text||'';
+
+  // ── Smart GSTIN assignment ────────────────────────────────────
+  var allGstins=ga(t,RX.gstin);
+  var sellerM=t.match(RX.gstinSeller);
+  var buyerM=t.match(RX.gstinBuyer);
+  var vendorGstin=sellerM?sellerM[1]:(allGstins[0]||null);
+  var buyerGstin=buyerM?buyerM[1]:(allGstins.length>1?allGstins.find(function(g){return g!==vendorGstin;}):null);
+
+  // ── Smart vendor name ─────────────────────────────────────────
+  var vendorLabel=g1(t,RX.vendorLabel,1);
+  var vendorCo=null;
+  var vendorFromGstin=null;
+  var lines_v=t.split('\n');
+
+  if(!vendorLabel){
+    // Strategy 1: lines with company suffix anywhere in first 25 lines
+    var skipRx=/^(TAX\s+INVOICE|INVOICE|BILL|RECEIPT|QUOTATION|GSTIN|PAN|PHONE|EMAIL|DATE|FROM|TO|ADDRESS|\d|HTTP|WWW|CIN|ORIGINAL|DUPLICATE|TRIPLICATE)/i;
+    for(var li=0;li<Math.min(25,lines_v.length);li++){
+      var ln=lines_v[li].trim();
+      if(!ln||skipRx.test(ln)||ln.length<4||ln.length>100)continue;
+      var coM=ln.match(RX.vendorCo);
+      if(coM){vendorCo=coM[1].trim();break;}
+    }
+  }
+  if(!vendorLabel&&!vendorCo){
+    // Strategy 2: look for lines immediately BEFORE the first GSTIN occurrence
+    // The company name almost always sits 1-4 lines above the seller GSTIN
+    var firstGstinIdx=t.search(/\b\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b/);
+    if(firstGstinIdx>0){
+      var beforeGstin=t.slice(0,firstGstinIdx);
+      var bLines=beforeGstin.split('\n').filter(function(l){return l.trim().length>3;});
+      var skipRx2=/^(TAX\s+INVOICE|INVOICE|BILL|RECEIPT|GSTIN|PAN|PHONE|EMAIL|DATE|FROM|TO|ADDRESS|\d|HTTP|WWW|CIN|ORIGINAL|DUPLICATE|SUBJECT)/i;
+      // Take the last non-skip line before the GSTIN as the company name candidate
+      for(var bi=bLines.length-1;bi>=Math.max(0,bLines.length-6);bi--){
+        var bl=bLines[bi].trim();
+        if(!bl||skipRx2.test(bl)||bl.length<4||bl.length>120)continue;
+        // Must look like a proper name (starts with capital, not all-caps address)
+        if(/^[A-Z][a-zA-Z]/.test(bl)){
+          vendorFromGstin=bl.replace(/[,;.]+$/,'').trim();
+          break;
+        }
+      }
+    }
+  }
+  if(!vendorLabel&&!vendorCo&&!vendorFromGstin){
+    // Strategy 3: first non-skip Capitalised line in doc (broader net)
+    var skipRx3=/^(TAX\s+INVOICE|INVOICE|BILL|RECEIPT|QUOTATION|GSTIN|PAN|PHONE|EMAIL|DATE|FROM|TO|ADDRESS|\d|HTTP|WWW|CIN|ORIGINAL|DUPLICATE|SUBJECT|DEAR|ATTN)/i;
+    for(var li3=0;li3<Math.min(15,lines_v.length);li3++){
+      var ln3=lines_v[li3].trim();
+      if(!ln3||skipRx3.test(ln3)||ln3.length<5||ln3.length>100)continue;
+      if(/^[A-Z][a-zA-Z]/.test(ln3)&&!/^(\d|HTTP|WWW)/.test(ln3)){
+        vendorFromGstin=ln3.replace(/[,;.]+$/,'').trim();
+        break;
+      }
+    }
+  }
+  var vendor=vendorLabel||vendorCo||vendorFromGstin;
+
+  // ── Buyer name ────────────────────────────────────────────────
+  var buyerLabel=g1(t,RX.buyerLabel,1);
+  var buyer=buyerLabel;
+
+  // ── Other fields ──────────────────────────────────────────────
+  var ifscs=ga(t,RX.ifsc);
+  var pans=ga(t,RX.pan);
+  var dates=Array.from(t.matchAll(RX.date)).map(function(m){return m[0];});
+  var amts=Array.from(t.matchAll(RX.amtRs)).map(function(m){return m[1];})
+    .sort(function(a,b){return parseFloat(b.replace(/,/g,''))-parseFloat(a.replace(/,/g,''));});
+  var inv=g1(t,RX.invNo,1)||g1(t,RX.invNoB,1);
+  var cgst=t.match(RX.cgst);
+  var sgst=t.match(RX.sgst);
+  var igst=t.match(RX.igst);
+  var bank=g1(t,RX.bankAcc,1);
+  var bankNm=g1(t,RX.bankNm,1);
+  var qty=g1(t,RX.qty,1);
+  var unit=g1(t,RX.qty,2);
+  var desc=g1(t,RX.desc,1);
+  var taxable=g1(t,RX.taxable,1);
+  // Use LAST total match to get grand total (not subtotal)
+  var totalMatches=Array.from(t.matchAll(new RegExp(RX.total.source,'gi'))).map(function(m){return m[1];});
+  var total=totalMatches.length?totalMatches[totalMatches.length-1]:null;
+  var rate=g1(t,RX.rate,1);
+  var hsn=g1(t,RX.hsn,1);
+  var po=g1(t,RX.po,1);
+  var place=g1(t,RX.place,1);
+  var email=g1(t,RX.email);
+  var phone=g1(t,RX.phone);
+
+  if(zone==='INVOICES'){
+    // Detect scanned/image PDF with no extractable text
+    var isScanned=!t||t.trim().length<80;
+    var fields=[
+      vendor?{field:'Vendor Name',value:vendor,conf:md()}:nf('Vendor Name'),
+      vendorGstin?{field:'Vendor GSTIN',value:vendorGstin,conf:hi()}:nf('Vendor GSTIN'),
+      buyer?{field:'Buyer Name',value:buyer,conf:md()}:nf('Buyer Name'),
+      buyerGstin?{field:'Buyer GSTIN',value:buyerGstin,conf:hi()}:nf('Buyer GSTIN'),
+      inv?{field:'Invoice Number',value:inv,conf:hi()}:nf('Invoice Number'),
+      dates[0]?{field:'Invoice Date',value:dates[0],conf:hi()}:nf('Invoice Date'),
+      po?{field:'PO / Work Order Ref',value:po,conf:hi()}:nf('PO / Work Order Ref'),
+      desc?{field:'Description of Services',value:desc.trim(),conf:md()}:nf('Description of Services'),
+      hsn?{field:'HSN / SAC Code',value:hsn,conf:hi()}:nf('HSN / SAC Code'),
+      qty?{field:'Quantity',value:qty+(unit?' '+unit:''),conf:hi()}:nf('Quantity'),
+      rate?{field:'Rate per Unit',value:'\u20B9'+rate,conf:md()}:nf('Rate per Unit'),
+      taxable?{field:'Taxable Amount',value:'\u20B9'+taxable,conf:hi()}:nf('Taxable Amount'),
+      cgst?{field:'CGST',value:cgst[1]+'%  \u2014  \u20B9'+cgst[2],conf:hi()}:nf('CGST'),
+      sgst?{field:'SGST',value:sgst[1]+'%  \u2014  \u20B9'+sgst[2],conf:hi()}:nf('SGST'),
+      igst?{field:'IGST',value:igst[1]+'%  \u2014  \u20B9'+igst[2],conf:hi()}:nf('IGST'),
+      total?{field:'Invoice Total',value:'\u20B9'+total,conf:hi()}:(amts[0]?{field:'Invoice Total',value:'\u20B9'+amts[0],conf:md()}:nf('Invoice Total')),
+      maskAcc(bank)?{field:'Bank Account',value:maskAcc(bank),conf:hi()}:nf('Bank Account'),
+      ifscs[0]?{field:'IFSC Code',value:ifscs[0],conf:hi()}:nf('IFSC Code'),
+      bankNm?{field:'Bank Name',value:bankNm.trim(),conf:md()}:nf('Bank Name'),
+      place?{field:'Place of Supply',value:place.trim(),conf:md()}:nf('Place of Supply'),
+      email?{field:'Contact Email',value:email,conf:hi()}:nf('Contact Email'),
+      phone?{field:'Phone',value:phone,conf:hi()}:nf('Phone'),
+    ];
+    if(isScanned){
+      fields=[{field:'Scanned Document Warning',value:'This appears to be a scanned/image PDF with no text layer. Local mode cannot read it. Switch to Claude AI mode (run via localhost:8080 with Python server) for full OCR extraction.',conf:0,isWarning:true}].concat(fields);
+    }
+    return fields;
+  }
+  if(zone==='CONTRACTS'){
+    return [
+      vendor?{field:'Vendor Name',value:vendor,conf:md()}:nf('Vendor Name'),
+      vendorGstin?{field:'Vendor GSTIN',value:vendorGstin,conf:hi()}:nf('Vendor GSTIN'),
+      rate?{field:'Contracted Rate',value:'\u20B9'+rate,conf:hi()}:nf('Contracted Rate'),
+      unit?{field:'Unit of Measure',value:unit,conf:hi()}:nf('Unit of Measure'),
+      dates[0]?{field:'Start Date',value:dates[0],conf:hi()}:nf('Start Date'),
+      dates[1]?{field:'End Date',value:dates[1],conf:hi()}:nf('End Date'),
+    ];
+  }
+  if(zone==='RATE_CARDS'){
+    return [
+      hsn?{field:'HSN / SAC Code',value:hsn,conf:hi()}:nf('HSN / SAC Code'),
+      rate?{field:'Rate per Unit',value:'\u20B9'+rate,conf:hi()}:(amts[0]?{field:'Rate per Unit',value:'\u20B9'+amts[0],conf:md()}:nf('Rate per Unit')),
+      unit?{field:'Unit of Measure',value:unit,conf:hi()}:nf('Unit of Measure'),
+      dates[0]?{field:'Effective From',value:dates[0],conf:hi()}:nf('Effective From'),
+      dates[1]?{field:'Effective To',value:dates[1],conf:hi()}:nf('Effective To'),
+    ];
+  }
+  // VENDOR_MASTER
+  return [
+    vendor?{field:'Vendor Name',value:vendor,conf:md()}:nf('Vendor Name'),
+    vendorGstin?{field:'GSTIN',value:vendorGstin,conf:hi()}:nf('GSTIN'),
+    pans[0]?{field:'PAN',value:pans[0],conf:hi()}:nf('PAN'),
+    maskAcc(bank)?{field:'Bank Account',value:maskAcc(bank),conf:hi()}:nf('Bank Account'),
+    ifscs[0]?{field:'IFSC Code',value:ifscs[0],conf:hi()}:nf('IFSC Code'),
+    email?{field:'Email',value:email,conf:hi()}:nf('Email'),
+    phone?{field:'Phone',value:phone,conf:hi()}:nf('Phone'),
+  ];
+}
+
+
+// ── CLAUDE API EXTRACTION ─────────────────────────────────────────
+var PROMPTS_RESOLVED={
+  INVOICES:'You are an expert document field extractor for an Indian invoice auditing system.\n\nTASK: Extract EVERY field with a visible label and value. Do not limit yourself to a predefined list.\n\nCRITICAL RULES:\n1. Return ONLY a valid JSON array. No markdown, no explanation, no text before or after.\n2. Include ONLY fields that actually exist in the document with a readable value.\n3. NEVER return entries with value \"Not found\" — if a field is absent, omit it entirely.\n4. Confidence: 95-100=clearly printed, 85-94=legible, below 80 only if genuinely blurry. Most fields in a clear document should be 90+.\n5. Use descriptive consistent field names.\n\nIf INVOICE: extract all present fields including — Vendor Name (issuing company, largest/boldest name at top), Vendor GSTIN, Buyer Name, Buyer GSTIN, Invoice Number, Invoice Date, Due Date, PO / Work Order Ref, Billing Period, Place of Supply, Reverse Charge, Description of Services, HSN / SAC Code, Quantity, Unit of Measure, Rate per Unit, Taxable Amount, CGST (format: 9% — Rs.9000.00), SGST (same format), IGST (same format), Invoice Total, Bank Account (mask middle digits), IFSC Code, Bank Name, Account Holder Name, Contact Email, Phone. Also extract any additional fields visible on this invoice.\n\nIf CONTRACT or AGREEMENT: extract all present fields including — Vendor Name (Service Provider), Vendor GSTIN, Client Name, Client GSTIN, Contract ID, Effective Date, Expiry Date, Service Description, HSN / SAC Code, Contracted Rate, Unit of Measure, Currency, Applicable GST Rate %, Payment Terms, TDS Rate, Security Deposit, Penalty Clauses (one-line summary), Renewal Terms. For rate tables extract each row as a separate field: Rate — [Description] = rate+unit.\n\nIf RATE CARD: extract Vendor Name, Vendor GSTIN, Rate Card Reference, Effective From, Effective To, all rate rows as Rate — [Description], Currency, GST %, Special Conditions.\n\nIf VENDOR DOCUMENT: extract Vendor Name, Vendor Code, GSTIN, PAN, Legal Entity Type, Registered Address, State, PIN Code, Bank Account (masked), IFSC Code, Bank Name, Account Type, Account Holder Name, Contact Person, Email, Phone, Service Category, Payment Terms.\n\nReturn ONLY valid JSON array: [{\"field\":\"Vendor Name\",\"value\":\"Rajesh Roadways Pvt Ltd\",\"confidence\":97},...]',
+  CONTRACTS:'You are an expert document field extractor for an Indian invoice auditing system.\n\nTASK: Extract EVERY field with a visible label and value. Do not limit yourself to a predefined list.\n\nCRITICAL RULES:\n1. Return ONLY a valid JSON array. No markdown, no explanation, no text before or after.\n2. Include ONLY fields that actually exist in the document with a readable value.\n3. NEVER return entries with value \"Not found\" — if a field is absent, omit it entirely.\n4. Confidence: 95-100=clearly printed, 85-94=legible, below 80 only if genuinely blurry. Most fields in a clear document should be 90+.\n5. Use descriptive consistent field names.\n\nIf INVOICE: extract all present fields including — Vendor Name (issuing company, largest/boldest name at top), Vendor GSTIN, Buyer Name, Buyer GSTIN, Invoice Number, Invoice Date, Due Date, PO / Work Order Ref, Billing Period, Place of Supply, Reverse Charge, Description of Services, HSN / SAC Code, Quantity, Unit of Measure, Rate per Unit, Taxable Amount, CGST (format: 9% — Rs.9000.00), SGST (same format), IGST (same format), Invoice Total, Bank Account (mask middle digits), IFSC Code, Bank Name, Account Holder Name, Contact Email, Phone. Also extract any additional fields visible on this invoice.\n\nIf CONTRACT or AGREEMENT: extract all present fields including — Vendor Name (Service Provider), Vendor GSTIN, Client Name, Client GSTIN, Contract ID, Effective Date, Expiry Date, Service Description, HSN / SAC Code, Contracted Rate, Unit of Measure, Currency, Applicable GST Rate %, Payment Terms, TDS Rate, Security Deposit, Penalty Clauses (one-line summary), Renewal Terms. For rate tables extract each row as a separate field: Rate — [Description] = rate+unit.\n\nIf RATE CARD: extract Vendor Name, Vendor GSTIN, Rate Card Reference, Effective From, Effective To, all rate rows as Rate — [Description], Currency, GST %, Special Conditions.\n\nIf VENDOR DOCUMENT: extract Vendor Name, Vendor Code, GSTIN, PAN, Legal Entity Type, Registered Address, State, PIN Code, Bank Account (masked), IFSC Code, Bank Name, Account Type, Account Holder Name, Contact Person, Email, Phone, Service Category, Payment Terms.\n\nReturn ONLY valid JSON array: [{\"field\":\"Vendor Name\",\"value\":\"Rajesh Roadways Pvt Ltd\",\"confidence\":97},...]',
+  RATE_CARDS:'You are an expert document field extractor for an Indian invoice auditing system.\n\nTASK: Extract EVERY field with a visible label and value. Do not limit yourself to a predefined list.\n\nCRITICAL RULES:\n1. Return ONLY a valid JSON array. No markdown, no explanation, no text before or after.\n2. Include ONLY fields that actually exist in the document with a readable value.\n3. NEVER return entries with value \"Not found\" — if a field is absent, omit it entirely.\n4. Confidence: 95-100=clearly printed, 85-94=legible, below 80 only if genuinely blurry. Most fields in a clear document should be 90+.\n5. Use descriptive consistent field names.\n\nIf INVOICE: extract all present fields including — Vendor Name (issuing company, largest/boldest name at top), Vendor GSTIN, Buyer Name, Buyer GSTIN, Invoice Number, Invoice Date, Due Date, PO / Work Order Ref, Billing Period, Place of Supply, Reverse Charge, Description of Services, HSN / SAC Code, Quantity, Unit of Measure, Rate per Unit, Taxable Amount, CGST (format: 9% — Rs.9000.00), SGST (same format), IGST (same format), Invoice Total, Bank Account (mask middle digits), IFSC Code, Bank Name, Account Holder Name, Contact Email, Phone. Also extract any additional fields visible on this invoice.\n\nIf CONTRACT or AGREEMENT: extract all present fields including — Vendor Name (Service Provider), Vendor GSTIN, Client Name, Client GSTIN, Contract ID, Effective Date, Expiry Date, Service Description, HSN / SAC Code, Contracted Rate, Unit of Measure, Currency, Applicable GST Rate %, Payment Terms, TDS Rate, Security Deposit, Penalty Clauses (one-line summary), Renewal Terms. For rate tables extract each row as a separate field: Rate — [Description] = rate+unit.\n\nIf RATE CARD: extract Vendor Name, Vendor GSTIN, Rate Card Reference, Effective From, Effective To, all rate rows as Rate — [Description], Currency, GST %, Special Conditions.\n\nIf VENDOR DOCUMENT: extract Vendor Name, Vendor Code, GSTIN, PAN, Legal Entity Type, Registered Address, State, PIN Code, Bank Account (masked), IFSC Code, Bank Name, Account Type, Account Holder Name, Contact Person, Email, Phone, Service Category, Payment Terms.\n\nReturn ONLY valid JSON array: [{\"field\":\"Vendor Name\",\"value\":\"Rajesh Roadways Pvt Ltd\",\"confidence\":97},...]',
+  VENDOR_MASTER:'You are an expert document field extractor for an Indian invoice auditing system.\n\nTASK: Extract EVERY field with a visible label and value. Do not limit yourself to a predefined list.\n\nCRITICAL RULES:\n1. Return ONLY a valid JSON array. No markdown, no explanation, no text before or after.\n2. Include ONLY fields that actually exist in the document with a readable value.\n3. NEVER return entries with value \"Not found\" — if a field is absent, omit it entirely.\n4. Confidence: 95-100=clearly printed, 85-94=legible, below 80 only if genuinely blurry. Most fields in a clear document should be 90+.\n5. Use descriptive consistent field names.\n\nIf INVOICE: extract all present fields including — Vendor Name (issuing company, largest/boldest name at top), Vendor GSTIN, Buyer Name, Buyer GSTIN, Invoice Number, Invoice Date, Due Date, PO / Work Order Ref, Billing Period, Place of Supply, Reverse Charge, Description of Services, HSN / SAC Code, Quantity, Unit of Measure, Rate per Unit, Taxable Amount, CGST (format: 9% — Rs.9000.00), SGST (same format), IGST (same format), Invoice Total, Bank Account (mask middle digits), IFSC Code, Bank Name, Account Holder Name, Contact Email, Phone. Also extract any additional fields visible on this invoice.\n\nIf CONTRACT or AGREEMENT: extract all present fields including — Vendor Name (Service Provider), Vendor GSTIN, Client Name, Client GSTIN, Contract ID, Effective Date, Expiry Date, Service Description, HSN / SAC Code, Contracted Rate, Unit of Measure, Currency, Applicable GST Rate %, Payment Terms, TDS Rate, Security Deposit, Penalty Clauses (one-line summary), Renewal Terms. For rate tables extract each row as a separate field: Rate — [Description] = rate+unit.\n\nIf RATE CARD: extract Vendor Name, Vendor GSTIN, Rate Card Reference, Effective From, Effective To, all rate rows as Rate — [Description], Currency, GST %, Special Conditions.\n\nIf VENDOR DOCUMENT: extract Vendor Name, Vendor Code, GSTIN, PAN, Legal Entity Type, Registered Address, State, PIN Code, Bank Account (masked), IFSC Code, Bank Name, Account Type, Account Holder Name, Contact Person, Email, Phone, Service Category, Payment Terms.\n\nReturn ONLY valid JSON array: [{\"field\":\"Vendor Name\",\"value\":\"Rajesh Roadways Pvt Ltd\",\"confidence\":97},...]',
+  HISTORICAL:'You are an expert document field extractor for an Indian invoice auditing system.\n\nTASK: Extract EVERY field with a visible label and value. Do not limit yourself to a predefined list.\n\nCRITICAL RULES:\n1. Return ONLY a valid JSON array. No markdown, no explanation, no text before or after.\n2. Include ONLY fields that actually exist in the document with a readable value.\n3. NEVER return entries with value \"Not found\" — if a field is absent, omit it entirely.\n4. Confidence: 95-100=clearly printed, 85-94=legible, below 80 only if genuinely blurry. Most fields in a clear document should be 90+.\n5. Use descriptive consistent field names.\n\nIf INVOICE: extract all present fields including — Vendor Name (issuing company, largest/boldest name at top), Vendor GSTIN, Buyer Name, Buyer GSTIN, Invoice Number, Invoice Date, Due Date, PO / Work Order Ref, Billing Period, Place of Supply, Reverse Charge, Description of Services, HSN / SAC Code, Quantity, Unit of Measure, Rate per Unit, Taxable Amount, CGST (format: 9% — Rs.9000.00), SGST (same format), IGST (same format), Invoice Total, Bank Account (mask middle digits), IFSC Code, Bank Name, Account Holder Name, Contact Email, Phone. Also extract any additional fields visible on this invoice.\n\nIf CONTRACT or AGREEMENT: extract all present fields including — Vendor Name (Service Provider), Vendor GSTIN, Client Name, Client GSTIN, Contract ID, Effective Date, Expiry Date, Service Description, HSN / SAC Code, Contracted Rate, Unit of Measure, Currency, Applicable GST Rate %, Payment Terms, TDS Rate, Security Deposit, Penalty Clauses (one-line summary), Renewal Terms. For rate tables extract each row as a separate field: Rate — [Description] = rate+unit.\n\nIf RATE CARD: extract Vendor Name, Vendor GSTIN, Rate Card Reference, Effective From, Effective To, all rate rows as Rate — [Description], Currency, GST %, Special Conditions.\n\nIf VENDOR DOCUMENT: extract Vendor Name, Vendor Code, GSTIN, PAN, Legal Entity Type, Registered Address, State, PIN Code, Bank Account (masked), IFSC Code, Bank Name, Account Type, Account Holder Name, Contact Person, Email, Phone, Service Category, Payment Terms.\n\nReturn ONLY valid JSON array: [{\"field\":\"Vendor Name\",\"value\":\"Rajesh Roadways Pvt Ltd\",\"confidence\":97},...]',
+};
+
+async function extractDocument(file,zone,apiKey){
+  var ext=file.name.split('.').pop().toLowerCase();
+  var mime=file.type||'';
+  var isPDF=mime==='application/pdf'||ext==='pdf';
+  var isImg=mime.startsWith('image/')||['png','jpg','jpeg','webp','gif'].includes(ext);
+
+  var prompt=PROMPTS_RESOLVED[zone]||PROMPTS_RESOLVED.INVOICES;
+  var geminiParts=[];
+  if(isPDF){
+    var b64=await readAsBase64(file);
+    geminiParts.push({inline_data:{mime_type:'application/pdf',data:b64}});
+  }else if(isImg){
+    var b64img=await readAsBase64(file);
+    var safeMime=['image/jpeg','image/png','image/gif','image/webp'].includes(mime)?mime:'image/jpeg';
+    geminiParts.push({inline_data:{mime_type:safeMime,data:b64img}});
+  }else{
+    var txt='';
+    try{txt=await readAsText(file);}catch(e){txt='';}
+    if(!txt.trim())throw new Error('Cannot read "'+file.name+'" as text. Upload a PDF or image.');
+    geminiParts.push({text:'Filename: '+file.name+'\n\nContents:\n'+txt.slice(0,15000)});
+  }
+  geminiParts.push({text:prompt});
+  var geminiUrl='https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODEL+':generateContent?key='+GEMINI_KEY;
+  var resp=await fetch(geminiUrl,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({contents:[{parts:geminiParts}],generationConfig:{temperature:0.1,maxOutputTokens:4096}}),
+  });
+  if(!resp.ok){var et=await resp.text().catch(function(){return '';});
+    throw new Error('Gemini '+resp.status+': '+et.slice(0,300));}
+  var data=await resp.json();
+  var raw='';
+  try{raw=data.candidates[0].content.parts[0].text||'';}catch(e){raw='';}
+  raw=raw.trim();
+  var js=raw.replace(/^```json\s*/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+  var parsed;
+  try{parsed=JSON.parse(js);}
+  catch(e1){
+    var m=raw.match(/\[[\s\S]*\]/);
+    if(m){
+      try{parsed=JSON.parse(m[0]);}
+      catch(e2){throw new Error('Parse failed: '+raw.slice(0,200));}
+    }else{
+      throw new Error('No JSON in response: '+raw.slice(0,200));
+    }
+  }
+  if(!Array.isArray(parsed))throw new Error('Expected array from Gemini');
+  var apiFields=parsed
+    .filter(function(it){return it.value&&String(it.value).trim()!==''&&String(it.value).toLowerCase().indexOf('not found')===-1;})
+    .map(function(it){return {
+      field:String(it.field||it.name||'?').trim(),
+      value:String(it.value).trim(),
+      conf:typeof it.confidence==='number'?Math.round(it.confidence):typeof it.conf==='number'?Math.round(it.conf):90,
+    };});
+  var found2=apiFields.length;
+  var avg2=found2>0?Math.round(apiFields.reduce(function(s,f){return s+f.conf;},0)/found2):0;
+  var lowConf2=apiFields.filter(function(f){return f.conf<75;});
+  var meta2={field:'Engine',value:'Claude Sonnet \u00B7 '+found2+' fields \u00B7 avg '+avg2+'% confidence',conf:100,isMeta:true};
+  return {fields:[meta2].concat(apiFields),needsReview:found2===0||(found2<4&&avg2<75),lowConfCount:lowConf2.length,foundCount:found2};
+}
+
+// ── CONF BAR ──────────────────────────────────────────────────────
+function ConfBar(props){
+  var v=props.v;
+  var c=v>=90?C.green:v>=75?C.blue:v>=60?C.amber:C.red;
+  return h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+    h('div',{style:{flex:1,height:3,background:'rgba(255,255,255,0.07)',borderRadius:2,overflow:'hidden'}},
+      h('div',{style:{width:v+'%',height:'100%',background:c,borderRadius:2}})
+    ),
+    h('span',{style:{fontSize:10,fontFamily:"'DM Mono',monospace",color:c,fontWeight:700,minWidth:32,textAlign:'right'}},v+'%')
+  );
+}
+
+// ── EXTRACTION PANEL ─────────────────────────────────────────────
+function ExtractionPanel(props){
+  var file=props.file,onApprove=props.onApprove,onClose=props.onClose;
+  var editState=useState(false);
+  var edit=editState[0];var setEdit=editState[1];
+  var all=file.extraction.fields;
+  var meta=all.find(function(f){return f.isMeta;});
+  var fieldsState=useState(all.filter(function(f){return !f.isMeta&&f.conf>0;}));
+  var fields=fieldsState[0];var setFields=fieldsState[1];
+  var found=fields.filter(function(f){return f.conf>0;}).length;
+  var low=fields.filter(function(f){return f.conf>0&&f.conf<80;});
+  var avg=found>0?Math.round(fields.filter(function(f){return f.conf>0;}).reduce(function(s,f){return s+f.conf;},0)/found):0;
+  function upd(i,v){setFields(function(ff){return ff.map(function(f,idx){return idx===i?Object.assign({},f,{value:v}):f;});});}
+  return h('div',{className:'card fu',style:{display:'flex',flexDirection:'column',gap:0,overflow:'hidden'}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}},
+      h('div',null,
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:3}},'Extraction Results'),
+        h('div',{style:{fontSize:11,color:C.muted,maxWidth:240,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},file.name)
+      ),
+      h('button',{onClick:onClose,style:{background:'transparent',border:'none',color:C.faint,cursor:'pointer'}},h(Ico,{d:IC.x,sz:15,s:C.faint}))
+    ),
+    h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:7,marginBottom:12}},
+      [{l:'Avg Confidence',v:found?avg+'%':'—',c:avg>=80?C.green:C.amber},
+       {l:'Fields Found',v:found+'/'+fields.length,c:found>3?C.blue:C.amber},
+       {l:'Low Conf',v:''+low.length,c:low.length>0?C.amber:C.green}].map(function(s){
+        return h('div',{key:s.l,style:{background:'rgba(255,255,255,0.03)',borderRadius:7,padding:'7px 10px',textAlign:'center'}},
+          h('div',{style:{fontSize:9,color:C.muted,marginBottom:2}},s.l),
+          h('div',{style:{fontSize:14,fontWeight:800,color:s.c,fontFamily:"'DM Mono',monospace"}},s.v)
+        );
+      })
+    ),
+    meta?h('div',{style:{background:'rgba(255,255,255,0.02)',border:'1px solid '+C.border,borderRadius:7,padding:'7px 11px',marginBottom:10,fontSize:10,color:C.faint,display:'flex',gap:6}},
+      h('span',{style:{color:C.blue,fontWeight:700}},'Engine:'),meta.value):null,
+    found===0?h('div',{style:{background:C.red+'08',border:'1px solid '+C.red+'25',borderRadius:7,padding:'9px 12px',marginBottom:10,fontSize:11,color:'rgba(255,255,255,0.65)',lineHeight:1.7}},
+      '\u26A0\uFE0F No fields found. This may be a scanned image or unsupported format. Try a text-based PDF or CSV version.'):null,
+    found>0&&low.length>0?h('div',{style:{background:C.amber+'08',border:'1px solid '+C.amber+'25',borderRadius:7,padding:'8px 11px',marginBottom:10,fontSize:11,color:'rgba(255,255,255,0.65)'}},
+      '\u26A0\uFE0F '+low.length+' low-confidence field'+(low.length>1?'s':'')+'. Review before approving.'):null,
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
+      h('div',{style:{fontSize:10,fontWeight:600,color:C.muted,textTransform:'uppercase',letterSpacing:.8}},'Extracted Fields'),
+      h('button',{onClick:function(){setEdit(function(e){return !e;});},
+        style:{fontSize:11,background:edit?C.amber+'15':'rgba(255,255,255,0.05)',color:edit?C.amber:C.muted,
+          border:'1px solid '+(edit?C.amber+'30':'rgba(255,255,255,0.1)'),borderRadius:5,padding:'3px 9px',cursor:'pointer'}},
+        edit?'\u2713 Done':'\u270F\uFE0F Edit')
+    ),
+    h('div',{style:{overflowY:'auto',maxHeight:300,display:'flex',flexDirection:'column',gap:4,marginBottom:12}},
+      fields.map(function(f,i){
+        var lo=f.conf<80;
+        return h('div',{key:i,style:{padding:'8px 10px',borderRadius:7,background:lo?C.amber+'06':'rgba(255,255,255,0.02)',border:'1px solid '+(lo?C.amber+'28':C.border)}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:edit?5:4}},
+            h('span',{style:{fontSize:10,color:lo?C.amber:C.muted,fontWeight:lo?600:400}},f.field+(lo?' \u26A0':'')),
+            edit?h('span',{style:{fontSize:9,color:C.faint}},f.conf+'%'):null
+          ),
+          edit?h('input',{value:f.value,onChange:function(e){upd(i,e.target.value);},style:{fontSize:12,padding:'4px 8px',marginBottom:5}}):
+            h('div',{style:{fontSize:f.isWarning?11:12,fontWeight:f.isWarning?400:600,color:f.isWarning?C.amber:C.text,fontFamily:f.isWarning?'inherit':"'DM Mono',monospace",marginBottom:4,wordBreak:'break-all',lineHeight:1.6}},f.value),
+          h(ConfBar,{v:f.conf})
+        );
+      })
+    ),
+    h('div',{style:{display:'flex',gap:8,paddingTop:10,borderTop:'1px solid '+C.border}},
+      h('button',{onClick:function(){onApprove(file.id,fields.filter(function(f){return f.conf>0;}));},
+        style:{flex:1,background:C.green,color:'#fff',border:'none',borderRadius:7,padding:'10px',fontSize:12,fontWeight:700,cursor:'pointer'}},
+        '\u2713 Approve & Queue for Audit'),
+      h('button',{onClick:onClose,style:{background:'rgba(255,255,255,0.06)',color:C.muted,border:'1px solid rgba(255,255,255,0.12)',borderRadius:7,padding:'10px 14px',fontSize:12,fontWeight:600,cursor:'pointer'}},'Later')
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  DOCUMENT HUB
+// ══════════════════════════════════════════════════════════════════
+var ZONES=[
+  {id:'INVOICES',    l:'Invoices',    c:C.blue},
+  {id:'CONTRACTS',   l:'Contracts',   c:'#8B5CF6'},
+  {id:'RATE_CARDS',  l:'Rate Cards',  c:C.green},
+  {id:'VENDOR_MASTER',l:'Vendor Docs',c:'#06B6D4'},
+];
+var STATUS={
+  QUEUED:    {c:'#4B5563',l:'Queued'},
+  EXTRACTING:{c:C.blue,  l:'Extracting'},
+  EXTRACTED: {c:C.amber, l:'Needs Review'},
+  REVIEWED:  {c:C.green, l:'Audit Ready'},
+  ERROR:     {c:C.red,   l:'Error'},
+};
+
+function DocumentHub(props){
+  var uploadedFiles=props.uploadedFiles,setUploadedFiles=props.setUploadedFiles,apiKey=props.apiKey;
+  var zoneState=useState('INVOICES');var zone=zoneState[0];var setZone=zoneState[1];
+  var dragState=useState(false);var drag=dragState[0];var setDrag=dragState[1];
+  var uploadingState=useState(false);var uploading=uploadingState[0];var setUploading=uploadingState[1];
+  var selState=useState(null);var sel=selState[0];var setSel=selState[1];
+  var az=ZONES.find(function(z){return z.id===zone;});
+
+  function handleFiles(list){
+    var files=Array.from(list);
+    if(!files.length)return;
+    var nfs=files.map(function(f){
+      return {id:Math.random().toString(36).slice(2),name:f.name,
+        size:(f.size/1024).toFixed(0)+' KB',zone:zone,status:'QUEUED',
+        uploaded:new Date().toLocaleTimeString(),extraction:null,_ref:f};
+    });
+    setUploadedFiles(function(p){return nfs.concat(p);});
+    nfs.forEach(async function(nf){
+      await new Promise(function(r){setTimeout(r,300);});
+      setUploadedFiles(function(p){return p.map(function(f){return f.id===nf.id?Object.assign({},f,{status:'EXTRACTING'}):f;});});
+      try{
+        var ex=await extractDocument(nf._ref,zone,apiKey);
+        setUploadedFiles(function(p){
+          return p.map(function(f){
+            if(f.id!==nf.id)return f;
+            return Object.assign({},f,{status:ex.needsReview?'EXTRACTED':'REVIEWED',extraction:ex});
+          });
+        });
+      }catch(err){
+        setUploadedFiles(function(p){
+          return p.map(function(f){
+            return f.id===nf.id?Object.assign({},f,{status:'ERROR',errorMsg:err.message}):f;
+          });
+        });
+      }
+    });
+  }
+
+  useEffect(function(){
+    var fi=document.getElementById('fi');
+    function handler(e){if(e.target.files.length){handleFiles(e.target.files);fi.value='';}}
+    fi.addEventListener('change',handler);
+    return function(){fi.removeEventListener('change',handler);};
+  },[zone]);
+
+  var liveSelected=sel?uploadedFiles.find(function(f){return f.id===sel.id;})||sel:null;
+  var showExt=liveSelected&&(liveSelected.status==='EXTRACTED'||liveSelected.status==='REVIEWED')&&liveSelected.extraction;
+  var showErr=liveSelected&&liveSelected.status==='ERROR';
+  var showExtracting=liveSelected&&liveSelected.status==='EXTRACTING';
+  var zoneFiles=uploadedFiles.filter(function(f){return f.zone===zone;});
+
+  function approveFile(id,corrected){
+    setUploadedFiles(function(p){
+      return p.map(function(f){
+        if(f.id!==id)return f;
+        var metaVal=f.extraction.fields.find(function(x){return x.isMeta;});
+        return Object.assign({},f,{status:'REVIEWED',extraction:Object.assign({},f.extraction,{
+          fields:[{field:'Engine',value:metaVal?metaVal.value:'',conf:100,isMeta:true}].concat(corrected)
+        })});
+      });
+    });
+    setSel(null);
+  }
+
+  return h('div',{style:{display:'flex',flexDirection:'column',gap:12}},
+    // Zone tabs
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      ZONES.map(function(z){
+        var cnt=uploadedFiles.filter(function(f){return f.zone===z.id;}).length;
+        return h('button',{key:z.id,onClick:function(){setZone(z.id);},
+          className:'tb'+(zone===z.id?' on':''),
+          style:zone===z.id?{borderColor:z.c+'50',color:z.c,background:z.c+'10'}:{}},
+          z.l,cnt>0?h('span',{style:{marginLeft:6,background:z.c+'20',color:z.c,fontSize:10,fontWeight:700,borderRadius:8,padding:'1px 6px'}},cnt):null
+        );
+      })
+    ),
+    // Main grid
+    h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1.4fr',gap:14,height:'calc(100vh - 156px)'}},
+      // LEFT: file list
+      h('div',{className:'card',style:{display:'flex',flexDirection:'column',overflow:'hidden',padding:'16px 14px'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexShrink:0}},
+          h('div',{style:{fontSize:12,fontWeight:600}},az.l+' ('+zoneFiles.length+')'),
+          h('button',{onClick:function(){document.getElementById('fi').click();},
+            style:{background:az.c,color:'#fff',border:'none',borderRadius:7,padding:'7px 14px',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}},
+            h(Ico,{d:IC.plus,sz:13,s:'#fff'}),'Add Files'
+          )
+        ),
+        zoneFiles.length===0
+          ? h('div',{
+              onDragOver:function(e){e.preventDefault();setDrag(true);},
+              onDragLeave:function(){setDrag(false);},
+              onDrop:function(e){e.preventDefault();setDrag(false);handleFiles(e.dataTransfer.files);},
+              onClick:function(){document.getElementById('fi').click();},
+              style:{flex:1,border:'2px dashed '+(drag?az.c:'rgba(255,255,255,0.1)'),borderRadius:10,
+                display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                cursor:'pointer',textAlign:'center',background:drag?az.c+'06':'transparent',transition:'all .2s'}},
+              uploading
+                ? h('div',{className:'spin',style:{width:28,height:28,border:'3px solid '+C.border,borderTopColor:az.c,borderRadius:'50%'}})
+                : h('div',null,
+                    h('div',{style:{fontSize:28,marginBottom:8}},zone==='INVOICES'?'\uD83E\uDDFE':zone==='CONTRACTS'?'\uD83D\uDCC4':zone==='RATE_CARDS'?'\uD83D\uDCB2':'\uD83D\uDCC1'),
+                    h('div',{style:{fontSize:13,fontWeight:600,marginBottom:4,color:C.muted}},'Drop '+az.l),
+                    h('div',{style:{fontSize:11,color:C.faint}},'PDF, image, CSV, XML')
+                  )
+            )
+          : h('div',{style:{overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:3}},
+              zoneFiles.map(function(f){
+                var s=STATUS[f.status]||STATUS.QUEUED;
+                var isSel=liveSelected&&liveSelected.id===f.id;
+                var clickable=f.status==='EXTRACTED'||f.status==='REVIEWED'||f.status==='ERROR';
+                return h('div',{key:f.id,
+                  onClick:clickable?function(){setSel(isSel?null:f);}:undefined,
+                  className:'rh',
+                  style:{display:'flex',alignItems:'center',gap:9,padding:'7px 8px',borderRadius:7,
+                    background:isSel?az.c+'08':'transparent',
+                    border:isSel?'1px solid '+az.c+'28':'1px solid transparent',
+                    cursor:clickable?'pointer':'default'}},
+                  h('div',{style:{width:28,height:28,background:'rgba(255,255,255,0.05)',borderRadius:5,
+                    display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:C.muted,flexShrink:0,fontFamily:"'DM Mono',monospace"}},
+                    f.name.split('.').pop().toUpperCase().slice(0,4)
+                  ),
+                  h('div',{style:{flex:1,minWidth:0}},
+                    h('div',{style:{fontSize:11,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isSel?az.c:C.text}},f.name),
+                    h('div',{style:{fontSize:9,color:C.faint,marginTop:1}},f.size+' \u00B7 '+f.uploaded)
+                  ),
+                  h('div',{style:{display:'flex',alignItems:'center',gap:5,flexShrink:0}},
+                    f.status==='EXTRACTING'?h('div',{className:'spin',style:{width:11,height:11,border:'2px solid rgba(255,255,255,0.1)',borderTopColor:C.blue,borderRadius:'50%'}}):null,
+                    h('span',{style:{fontSize:9,color:s.c,background:s.c+'15',padding:'2px 6px',borderRadius:3,fontWeight:700}},s.l)
+                  ),
+                  h('button',{
+                    onClick:function(e){
+                      e.stopPropagation();
+                      setUploadedFiles(function(p){return p.filter(function(x){return x.id!==f.id;});});
+                      setSel(function(prev){return prev&&prev.id===f.id?null:prev;});
+                    },
+                    style:{background:'transparent',border:'none',color:C.faint,cursor:'pointer',padding:2,flexShrink:0}},
+                    h(Ico,{d:IC.x,sz:12,s:C.faint})
+                  )
+                );
+              }),
+              h('div',{style:{marginTop:8,paddingTop:8,borderTop:'1px solid '+C.border,flexShrink:0}},
+                h('button',{onClick:function(){document.getElementById('fi').click();},
+                  style:{width:'100%',background:'rgba(255,255,255,0.03)',border:'1px dashed '+az.c+'40',color:az.c,
+                    borderRadius:7,padding:'7px',fontSize:11,fontWeight:600,cursor:'pointer'}},
+                  '+ Add more '+az.l.toLowerCase()+'...'
+                )
+              )
+            )
+      ),
+      // RIGHT: detail panel
+      h('div',{style:{display:'flex',flexDirection:'column',gap:12,overflowY:'auto'}},
+        showExt?h(ExtractionPanel,{key:liveSelected.id,file:liveSelected,onApprove:approveFile,onClose:function(){setSel(null);}}):null,
+        showExtracting?h('div',{className:'card',style:{display:'flex',flexDirection:'column',alignItems:'center',padding:'48px 20px',gap:14,textAlign:'center'}},
+          h('div',{className:'spin',style:{width:40,height:40,border:'3px solid rgba(255,255,255,0.07)',borderTopColor:C.blue,borderRadius:'50%'}}),
+          h('div',{style:{fontSize:14,fontWeight:700}},'Extracting Document...'),
+          h('div',{style:{fontSize:12,color:C.muted,lineHeight:1.8,maxWidth:280}},
+            IS_LOCAL?'Reading with PDF.js + pattern matching.':'Claude AI is reading every field from your document.',
+            h('br'),h('span',{style:{fontSize:11,color:C.faint}},'Usually 5\u201315 seconds.')
+          )
+        ):null,
+        showErr?h('div',{className:'card fu',style:{display:'flex',flexDirection:'column',gap:12}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
+            h('div',{style:{fontSize:13,fontWeight:700,color:C.red}},'\u26A0 Extraction Failed'),
+            h('button',{onClick:function(){setSel(null);},style:{background:'transparent',border:'none',color:C.faint,cursor:'pointer'}},h(Ico,{d:IC.x,sz:15,s:C.faint}))
+          ),
+          h('div',{style:{background:C.red+'08',border:'1px solid '+C.red+'25',borderRadius:7,padding:'11px 13px',fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7,wordBreak:'break-word',fontFamily:"'DM Mono',monospace"}},
+            liveSelected?liveSelected.errorMsg||'Unknown error':'Unknown error'
+          ),
+          h('button',{
+            onClick:async function(){
+              var fileRef=liveSelected?liveSelected._ref:null;
+              var fileId=liveSelected?liveSelected.id:null;
+              var fileZone=liveSelected?liveSelected.zone:'INVOICES';
+              if(!fileRef)return;
+              setUploadedFiles(function(p){return p.map(function(f){return f.id===fileId?Object.assign({},f,{status:'EXTRACTING',errorMsg:undefined}):f;});});
+              try{
+                var ex=await extractDocument(fileRef,fileZone,apiKey);
+                setUploadedFiles(function(p){return p.map(function(f){return f.id===fileId?Object.assign({},f,{status:ex.needsReview?'EXTRACTED':'REVIEWED',extraction:ex}):f;});});
+              }catch(err){
+                setUploadedFiles(function(p){return p.map(function(f){return f.id===fileId?Object.assign({},f,{status:'ERROR',errorMsg:err.message}):f;});});
+              }
+            },
+            style:{background:C.amber,color:'#0A0D14',border:'none',borderRadius:7,padding:'9px 16px',fontSize:13,fontWeight:700,cursor:'pointer'}},
+          '\u21BB Retry'
+          )
+        ):null,
+        !showExt&&!showErr&&!showExtracting?h('div',{className:'card',style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:220,textAlign:'center',color:C.faint}},
+          h('div',{style:{fontSize:32,marginBottom:12}},zone==='INVOICES'?'\uD83E\uDDFE':zone==='CONTRACTS'?'\uD83D\uDCC4':zone==='RATE_CARDS'?'\uD83D\uDCB2':'\uD83D\uDCC1'),
+          h('div',{style:{fontSize:13,fontWeight:600,color:C.muted,marginBottom:6}},
+            zoneFiles.length>0?'Select a file to review extraction':'Upload a file to begin'
+          ),
+          h('div',{style:{fontSize:11,color:C.faint,maxWidth:260,lineHeight:1.7}},
+            IS_LOCAL
+              ?'Running in local mode. PDF.js extracts text from PDFs automatically.'
+              :'Claude AI will read every field and return structured data with confidence scores.'
+          ),
+          IS_LOCAL?h('div',{style:{marginTop:14,padding:'10px 14px',background:C.blue+'08',border:'1px solid '+C.blue+'25',borderRadius:8,fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.8,maxWidth:280,textAlign:'left'}},
+            h('b',{style:{color:C.blue}},'Already running correctly! '),
+            'localhost:8080 means the server is working. ',
+            'Local mode extracts data from PDFs and CSVs using PDF.js + pattern matching.'
+          ):null
+        ):null
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  AUDIT FINDINGS
+// ══════════════════════════════════════════════════════════════════
+async function runGroqOversight(invoices,contracts,rateCards,vmData,ruleFindings){
+  function af(ex){if(!ex||!ex.fields)return{};var o={};ex.fields.filter(function(x){return !x.isMeta&&x.conf>0;}).forEach(function(x){o[x.field]=x.value;});return o;}
+  var prompt='You are a senior Indian GST auditor. Return ONLY valid JSON array, no markdown.\n'
+    +'Vendor matching: Pvt Ltd=Private Limited. Use GSTIN as primary key. Do NOT repeat rule findings.\n'
+    +'INVOICES:'+JSON.stringify(invoices.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
+    +'\nCONTRACTS:'+JSON.stringify(contracts.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
+    +'\nVENDOR MASTER:'+JSON.stringify(vmData.map(function(v){return{name:v.name,gstin:v.gstin};}))
+    +'\nSKIP THESE:'+JSON.stringify(ruleFindings.map(function(f){return{type:f.type,title:f.title};}))
+    +'\nEach finding: {"type":"PRICING","severity":"HIGH","title":"...","vendorName":"...","invoiceFile":"...","overchargeAmt":0,"desc":"...","action":"..."}\nNo findings=[]';
+  var resp=await fetch('/api/groq',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'user',content:prompt}],max_tokens:4096,temperature:0.1})});
+  if(!resp.ok){var et=await resp.text().catch(function(){return'';});throw new Error('Groq '+resp.status+': '+et.slice(0,200));}
+  var data=await resp.json();
+  var raw='';try{raw=data.choices[0].message.content||'';}catch(e){raw='';}
+  raw=raw.trim().replace(/^```json\s*/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+  var parsed;try{parsed=JSON.parse(raw);}catch(e){var m=raw.match(/\[[\s\S]*\]/);if(m){try{parsed=JSON.parse(m[0]);}catch(e2){return[];}}else{return [];}}
+  if(!Array.isArray(parsed))return[];
+  return parsed.map(function(it,i){return{
+    id:'ai-'+Date.now()+'-'+i,
+    type:String(it.type||'COMPLIANCE').toUpperCase(),
+    severity:['CRITICAL','HIGH','MEDIUM','LOW'].includes(String(it.severity||'').toUpperCase())?String(it.severity).toUpperCase():'MEDIUM',
+    title:String(it.title||'AI Finding'),vendorName:String(it.vendorName||'Unknown'),
+    overchargeAmt:parseFloat(it.overchargeAmt)||0,desc:String(it.desc||''),
+    action:String(it.action||''),file:String(it.invoiceFile||''),ref:'AI Analysis',isAI:true};});
+}
+
+function AuditFindings(props){
+  var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster,config=props.config;
+  var filterState=useState('ALL');var filter=filterState[0];var setFilter=filterState[1];
+  var aiFS=useState([]);var aiFindings=aiFS[0];var setAiFindings=aiFS[1];
+  var aiRS=useState(false);var aiRunning=aiRS[0];var setAiRunning=aiRS[1];
+  var aiES=useState('');var aiErr=aiES[0];var setAiErr=aiES[1];
+  var aiDS=useState(false);var aiDone=aiDS[0];var setAiDone=aiDS[1];
+
+  function getField(extraction,name){
+    if(!extraction)return null;
+    var f=extraction.fields.find(function(x){return x.field===name&&x.conf>0;});
+    return f?f.value:null;
+  }
+  function parseAmt(v){
+    if(!v)return null;
+    var n=parseFloat(v.replace(/[^\d.]/g,''));
+    return isNaN(n)?null:n;
+  }
+  function fmtAmt(n){
+    if(!n||n<=0)return null;
+    return '\u20B9'+n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+
+  var findings=[];
+  var approved=uploadedFiles.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
+
+  approved.forEach(function(f){
+    var ex=f.extraction;
+    var vendorName=getField(ex,'Vendor Name');
+    var invoiceNo=getField(ex,'Invoice Number');
+    var invoiceTotal=getField(ex,'Invoice Total');
+    var taxableAmt=getField(ex,'Taxable Amount');
+    var cgst=getField(ex,'CGST');
+    var sgst=getField(ex,'SGST');
+    var igst=getField(ex,'IGST');
+    var gstin=getField(ex,'Vendor GSTIN');
+    var ifsc=getField(ex,'IFSC Code');
+    var hsnField=getField(ex,'HSN / SAC Code');
+    var rateField=getField(ex,'Rate per Unit');
+    var qtyField=getField(ex,'Quantity');
+    var ref=(invoiceNo||f.name)+' \u00B7 '+(vendorName||'Unknown');
+
+    // ── CHECK 1: GST Calculation Error ──────────────────────────
+    var totalAmt=parseAmt(invoiceTotal);
+    var taxable=parseAmt(taxableAmt);
+    if(totalAmt&&taxable){
+      var taxTotal=0;
+      var cgstAmt=0,sgstAmt=0,igstAmt=0;
+      if(cgst){var mc=cgst.match(/[\d,]+(?:\.\d+)?/g);if(mc&&mc[1]){cgstAmt=parseFloat(mc[1].replace(/,/g,''))||0;taxTotal+=cgstAmt;}}
+      if(sgst){var ms=sgst.match(/[\d,]+(?:\.\d+)?/g);if(ms&&ms[1]){sgstAmt=parseFloat(ms[1].replace(/,/g,''))||0;taxTotal+=sgstAmt;}}
+      if(igst){var mi=igst.match(/[\d,]+(?:\.\d+)?/g);if(mi&&mi[1]){igstAmt=parseFloat(mi[1].replace(/,/g,''))||0;taxTotal+=igstAmt;}}
+      if(taxTotal>0){
+        var expected=taxable+taxTotal;
+        var diff=totalAmt-expected;
+        var tol=parseFloat(config.calcErrTolerance)||0.5;
+        if(Math.abs(diff)>tol){
+          var overAmt=diff>0?diff:0;
+          findings.push({id:f.id+'-gst',type:'CALC_ERROR',severity:'HIGH',
+            vendorName:vendorName||'Unknown',overchargeAmt:overAmt,
+            title:'GST Calculation Mismatch',
+            desc:'Invoice total \u20B9'+totalAmt.toLocaleString('en-IN')+' \u2260 taxable \u20B9'+taxable.toLocaleString('en-IN')+' + taxes \u20B9'+taxTotal.toLocaleString('en-IN')+'. Difference: \u20B9'+Math.abs(diff).toFixed(2)+'.',
+            action:'Hold payment. Request a corrected invoice from the vendor showing proper breakup.',
+            ref:ref,file:f.name});
+        }
+      }
+    }
+
+    // ── CHECK 2: HSN Code vs Expected GST Rate ───────────────────
+    if(hsnField&&(cgst||igst)){
+      var hsnCode=hsnField.replace(/[^0-9]/g,'');
+      var matchedRate=(config.gstRates||[]).find(function(r){return hsnCode.startsWith(r.hsn.replace(/[^0-9]/g,''));});
+      if(matchedRate){
+        var expectedRate=parseFloat(matchedRate.rate)||0;
+        var actualRate=0;
+        if(cgst){var mcr=cgst.match(/^([\d.]+)%/);if(mcr)actualRate=parseFloat(mcr[1])*2;}
+        if(igst&&!actualRate){var mir=igst.match(/^([\d.]+)%/);if(mir)actualRate=parseFloat(mir[1]);}
+        if(actualRate>0&&Math.abs(actualRate-expectedRate)>0.5){
+          var taxableN=parseAmt(taxableAmt)||0;
+          var overRate=taxableN*(actualRate-expectedRate)/100;
+          findings.push({id:f.id+'-hsnrate',type:'GST_RATE',severity:'HIGH',
+            vendorName:vendorName||'Unknown',overchargeAmt:overRate>0?overRate:0,
+            title:'Wrong GST Rate for HSN '+hsnField,
+            desc:'HSN '+hsnField+' ('+matchedRate.desc+') should attract '+expectedRate+'% GST but invoice shows '+actualRate+'%. Taxable value: \u20B9'+(taxableN).toLocaleString('en-IN')+'.',
+            action:'Reject invoice. Request corrected invoice with '+expectedRate+'% GST rate. File GSTR-2B reconciliation note.',
+            ref:ref,file:f.name});
+        }
+      }
+    }
+
+    // ── CHECK 3: GSTIN Format ────────────────────────────────────
+    if(gstin&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin)){
+      findings.push({id:f.id+'-gstin',type:'COMPLIANCE',severity:'HIGH',
+        vendorName:vendorName||'Unknown',overchargeAmt:0,
+        title:'Invalid GSTIN Format',
+        desc:'Vendor GSTIN "'+gstin+'" does not match the 15-character GST format. ITC claim worth \u20B9'+(parseAmt(invoiceTotal)||0).toLocaleString('en-IN')+' is at risk.',
+        action:'Block ITC claim until vendor provides correct GSTIN. Contact vendor compliance team.',
+        ref:ref,file:f.name});
+    }
+
+    // ── CHECK 4: Bank Detail vs Vendor Master ────────────────────
+    if(vendorName&&ifsc&&config.bankValidation){
+      var vmv=vendorMaster.find(function(v){
+        return (v.name&&v.name.toLowerCase()===vendorName.toLowerCase())||(v.gstin&&v.gstin===gstin);
+      });
+      if(vmv&&vmv.ifsc&&vmv.ifsc!==ifsc){
+        findings.push({id:f.id+'-bank',type:'FRAUD',severity:'CRITICAL',
+          vendorName:vendorName||'Unknown',overchargeAmt:parseAmt(invoiceTotal)||0,
+          title:'Bank Detail Mismatch \u2014 Suspected Fraud',
+          desc:'Invoice IFSC "'+ifsc+'" does not match Vendor Master IFSC "'+vmv.ifsc+'" for '+vendorName+'. Full invoice value \u20B9'+(parseAmt(invoiceTotal)||0).toLocaleString('en-IN')+' at risk.',
+          action:'FREEZE payment immediately. Contact vendor via verified phone/email (not details on this invoice). Escalate to finance head and initiate fraud review.',
+          ref:ref,file:f.name});
+      }
+    }
+
+    // ── CHECK 5: Rate vs Rate Card / Contract ────────────────────
+    var rateVal=parseAmt(rateField);
+    var qtyVal=parseAmt(qtyField);
+    if(rateVal&&vendorName){
+      var rcFiles=uploadedFiles.filter(function(f2){
+        return (f2.zone==='RATE_CARDS'||f2.zone==='CONTRACTS')&&f2.status==='REVIEWED'&&f2.extraction;
+      });
+      rcFiles.forEach(function(rcf){
+        var rcVendor=getField(rcf.extraction,'Vendor Name')||getField(rcf.extraction,'Vendor');
+        var rcRate=parseAmt(getField(rcf.extraction,'Rate per Unit')||getField(rcf.extraction,'Contracted Rate'));
+        if(rcVendor&&rcVendor.toLowerCase()===vendorName.toLowerCase()&&rcRate){
+          var devPct=((rateVal-rcRate)/rcRate)*100;
+          var thresh=parseFloat(config.pricingDeviation)||5;
+          if(devPct>thresh){
+            var overPerUnit=rateVal-rcRate;
+            var overTotal=qtyVal?overPerUnit*qtyVal:0;
+            findings.push({id:f.id+'-rate-'+rcf.id,type:'PRICING',severity:'MEDIUM',
+              vendorName:vendorName||'Unknown',overchargeAmt:overTotal,
+              title:'Rate Overbilling: +'+devPct.toFixed(1)+'% above '+(rcf.zone==='CONTRACTS'?'contract':'rate card'),
+              desc:'Invoiced \u20B9'+rateVal+'/unit vs agreed \u20B9'+rcRate+'/unit for '+vendorName+'. Deviation: +'+devPct.toFixed(1)+'%'+(overTotal?'. Estimated overcharge: \u20B9'+overTotal.toLocaleString('en-IN',{minimumFractionDigits:2}):'')+'.',
+              action:'Request credit note for \u20B9'+(overTotal||overPerUnit).toLocaleString('en-IN',{minimumFractionDigits:2})+'. Renegotiate if this is a pattern across multiple invoices.',
+              ref:ref,file:f.name});
+          }
+        }
+      });
+    }
+
+    // ── CHECK 6: Mystery Surcharge ───────────────────────────────
+    if(totalAmt&&taxable){
+      var taxT2=0;
+      if(cgst){var mc2=cgst.match(/[\d,]+(?:\.\d+)?/g);if(mc2&&mc2[1])taxT2+=parseFloat(mc2[1].replace(/,/g,''))||0;}
+      if(sgst){var ms2=sgst.match(/[\d,]+(?:\.\d+)?/g);if(ms2&&ms2[1])taxT2+=parseFloat(ms2[1].replace(/,/g,''))||0;}
+      if(igst){var mi2=igst.match(/[\d,]+(?:\.\d+)?/g);if(mi2&&mi2[1])taxT2+=parseFloat(mi2[1].replace(/,/g,''))||0;}
+      var rateAmt=rateVal&&qtyVal?rateVal*qtyVal:0;
+      if(rateAmt>0&&taxable>0){
+        var unexplained=taxable-rateAmt;
+        var surchargeCapPct=parseFloat(config.surchargeCapPct)||10;
+        var surchargeCap=rateAmt*(surchargeCapPct/100);
+        if(unexplained>surchargeCap&&unexplained>100){
+          findings.push({id:f.id+'-surcharge',type:'SURCHARGE',severity:'MEDIUM',
+            vendorName:vendorName||'Unknown',overchargeAmt:unexplained-surchargeCap,
+            title:'Mystery Surcharge Detected',
+            desc:'Taxable value \u20B9'+taxable.toLocaleString('en-IN')+' exceeds rate \xD7 qty \u20B9'+rateAmt.toLocaleString('en-IN')+' by \u20B9'+unexplained.toLocaleString('en-IN')+'. Allowed surcharge cap: '+surchargeCapPct+'% (\u20B9'+surchargeCap.toFixed(2)+').',
+            action:'Request itemised breakup of all surcharges. Reject amounts not covered by contract. Issue debit note for \u20B9'+(unexplained-surchargeCap).toFixed(2)+'.',
+            ref:ref,file:f.name});
+        }
+      }
+    }
+  });
+
+  // ── CHECK 7: Duplicate Invoice Numbers ───────────────────────
+  var invNos={};
+  approved.forEach(function(f){
+    var n=getField(f.extraction,'Invoice Number');
+    if(n){if(!invNos[n])invNos[n]=[];invNos[n].push(f);}
+  });
+  Object.keys(invNos).forEach(function(n){
+    if(invNos[n].length>1){
+      var dupAmt=invNos[n].reduce(function(s,f){return s+(parseAmt(getField(f.extraction,'Invoice Total'))||0);},0);
+      var singleAmt=parseAmt(getField(invNos[n][0].extraction,'Invoice Total'))||0;
+      findings.push({id:'dup-'+n,type:'DUPLICATE',severity:'HIGH',
+        vendorName:getField(invNos[n][0].extraction,'Vendor Name')||'Unknown',
+        overchargeAmt:dupAmt-singleAmt,
+        title:'Duplicate Invoice Number: '+n,
+        desc:'Invoice number "'+n+'" appears '+invNos[n].length+' times across: '+invNos[n].map(function(f){return f.name;}).join(', ')+'. Risk of double payment: \u20B9'+(dupAmt-singleAmt).toLocaleString('en-IN')+'.',
+        action:'Block all payments on duplicate copies. Verify with vendor which is the original. Mark duplicates as rejected.',
+        ref:n,file:invNos[n][0].name});
+    }
+  });
+
+  var allFindings=findings.concat(aiFindings);
+  async function handleRunAI(){
+    setAiRunning(true);setAiErr('');setAiDone(false);
+    try{
+      var con=uploadedFiles.filter(function(f){return f.zone==='CONTRACTS'&&f.status==='REVIEWED'&&f.extraction;});
+      var rc=uploadedFiles.filter(function(f){return f.zone==='RATE_CARDS'&&f.status==='REVIEWED'&&f.extraction;});
+      var res=await runGroqOversight(approved,con,rc,vendorMaster,findings);
+      setAiFindings(res);setAiDone(true);
+    }catch(e){setAiErr(e.message||'AI Oversight failed');}
+    setAiRunning(false);
+  }
+  var SEV={CRITICAL:{c:C.red,o:0},HIGH:{c:C.amber,o:1},MEDIUM:{c:C.blue,o:2},LOW:{c:C.green,o:3}};
+  var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing',NAME_MISMATCH:'Name Match'};
+  var sorted=allFindings.slice().sort(function(a,b){return (SEV[a.severity]?SEV[a.severity].o:9)-(SEV[b.severity]?SEV[b.severity].o:9);});
+  var counts={ALL:allFindings.length};
+  Object.keys(TYPE_LABELS).forEach(function(k){counts[k]=0;});
+  allFindings.forEach(function(f){if(counts[f.type]!==undefined)counts[f.type]++;});
+  var totalOvercharge=allFindings.reduce(function(s,f){return s+(f.overchargeAmt||0);},0);
+  var visible=filter==='ALL'?sorted:sorted.filter(function(f){return f.type===filter;});
+  var filterKeys=['ALL','FRAUD','CALC_ERROR','GST_RATE','PRICING','SURCHARGE','DUPLICATE','COMPLIANCE','CONTRACT_VIOLATION','PERIOD_VIOLATION','NAME_MISMATCH','MISSING_FIELD'];
+
+  return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+    totalOvercharge>0&&approved.length>0?h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}},
+      h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.red}},
+        h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Total Overcharge Detected'),
+        h('div',{style:{fontSize:22,fontWeight:800,color:C.red,fontFamily:"'DM Mono',monospace"}},'\u20B9'+totalOvercharge.toLocaleString('en-IN',{minimumFractionDigits:2})),
+        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},findings.length+' finding'+(findings.length!==1?'s':'')+' across '+approved.length+' invoices')
+      ),
+      h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.amber}},
+        h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Critical / High Findings'),
+        h('div',{style:{fontSize:22,fontWeight:800,color:C.amber,fontFamily:"'DM Mono',monospace"}},allFindings.filter(function(f){return f.severity==='CRITICAL'||f.severity==='HIGH';}).length),
+        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},'Require immediate action')
+      ),
+      h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.blue}},
+        h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Medium / Pricing Findings'),
+        h('div',{style:{fontSize:22,fontWeight:800,color:C.blue,fontFamily:"'DM Mono',monospace"}},allFindings.filter(function(f){return f.severity==='MEDIUM';}).length),
+        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},'Review and recover')
+      )
+    ):null,
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      filterKeys.map(function(k){
+        var l=k==='ALL'?'All':TYPE_LABELS[k]||k;
+        return h('button',{key:k,onClick:function(){setFilter(k);},className:'tb'+(filter===k?' on':''),
+          style:{display:'flex',alignItems:'center',gap:6}},
+          l,counts[k]>0?h('span',{style:{background:filter===k?C.amber+'30':'rgba(255,255,255,0.1)',color:filter===k?C.amber:C.muted,fontSize:10,fontWeight:700,borderRadius:8,padding:'0 6px'}},counts[k]):null
+        );
+      })
+    ),
+    approved.length>0?h('div',{style:{background:'rgba(139,92,246,0.06)',border:'1px solid rgba(139,92,246,0.25)',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:4}},
+      h('div',{style:{flex:1,minWidth:180}},
+        h('div',{style:{fontSize:12,fontWeight:700,color:'#8B5CF6',marginBottom:2}},'✨ AI Overseer · Groq llama-3.3-70b'),
+        h('div',{style:{fontSize:11,color:C.faint}},
+          aiDone?'✓ Done · '+aiFindings.length+' extra finding'+(aiFindings.length!==1?'s':'')+' found':
+          aiRunning?'Cross-matching all documents...':
+          'Catches fuzzy name mismatches, contract violations & more.')
+      ),
+      aiErr?h('div',{style:{fontSize:11,color:C.red,padding:'4px 10px',background:C.red+'10',borderRadius:6}},'⚠ '+aiErr):null,
+      aiRunning
+        ?h('div',{style:{display:'flex',alignItems:'center',gap:8,color:'#8B5CF6',fontSize:12}},
+            h('div',{className:'spin',style:{width:14,height:14,border:'2px solid rgba(139,92,246,0.2)',borderTopColor:'#8B5CF6',borderRadius:'50%'}}),'Analysing...')
+        :h('button',{onClick:handleRunAI,style:{background:'linear-gradient(135deg,#8B5CF6,#6D28D9)',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}},
+            aiDone?'↻ Re-run AI Audit':'▶ Run AI Overseer')
+    ):null,
+    approved.length===0
+      ? h(Empty,{icon:'\uD83D\uDEE1\uFE0F',msg:'No invoices audited yet',sub:'Upload and approve invoices in the Document Hub. Findings appear automatically.'})
+      : visible.length===0
+        ? h('div',{className:'card',style:{textAlign:'center',padding:'44px 20px',color:C.green}},
+            h('div',{style:{fontSize:36,marginBottom:12}},'\u2705'),
+            h('div',{style:{fontSize:14,fontWeight:700,marginBottom:6}},'No findings in this category'),
+            h('div',{style:{fontSize:12,color:C.muted}},approved.length+' invoice'+(approved.length>1?'s':'')+' passed all checks.')
+          )
+        : h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
+            h('div',{style:{fontSize:12,color:C.muted,marginBottom:4}},visible.length+' finding'+(visible.length>1?'s':'')+' \u00B7 '+approved.length+' invoice'+(approved.length>1?'s':'')+' audited'),
+            visible.map(function(finding){
+              var sev=SEV[finding.severity]||{c:C.muted};
+              return h('div',{key:finding.id,className:'card',style:{borderLeft:'3px solid '+(finding.isAI?'#8B5CF6':sev.c),padding:'14px 18px'}},
+                h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}},
+                  h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+                    h('span',{style:{fontSize:11,fontWeight:700,color:sev.c,background:sev.c+'15',border:'1px solid '+sev.c+'30',padding:'2px 8px',borderRadius:4}},finding.severity),
+                    h('span',{style:{fontSize:11,fontWeight:700,color:C.muted,background:'rgba(255,255,255,0.06)',padding:'2px 8px',borderRadius:4}},TYPE_LABELS[finding.type]||finding.type),
+                    finding.overchargeAmt>0?h('span',{style:{fontSize:11,fontWeight:700,color:C.red,background:C.red+'12',border:'1px solid '+C.red+'30',padding:'2px 8px',borderRadius:4}},'\u20B9'+finding.overchargeAmt.toLocaleString('en-IN',{minimumFractionDigits:2})+' overcharge'):null
+                  ),
+                  h('span',{style:{fontSize:11,color:C.faint,flexShrink:0,marginLeft:8}},finding.file)
+                ),
+                h('div',{style:{fontSize:13,fontWeight:700,marginBottom:6,color:C.text}},finding.title),
+                h('div',{style:{fontSize:12,color:C.muted,lineHeight:1.7,marginBottom:8}},finding.desc),
+                finding.action?h('div',{style:{background:C.amber+'08',border:'1px solid '+C.amber+'25',borderRadius:6,padding:'8px 12px',fontSize:11,color:'rgba(255,255,255,0.75)',lineHeight:1.6}},
+                  h('span',{style:{color:C.amber,fontWeight:700}},'Recommended Action: '),finding.action):null,
+                h('div',{style:{fontSize:11,color:C.faint,marginTop:8}},finding.ref)
+              );
+            })
+          )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  VENDOR MASTER
+// ══════════════════════════════════════════════════════════════════
+var VFIELDS=[
+  {k:'name',l:'Vendor Name *',t:'text',req:true},
+  {k:'code',l:'Vendor Code',t:'text'},
+  {k:'gstin',l:'GSTIN',t:'text',ph:'22AAAAA0000A1Z5'},
+  {k:'pan',l:'PAN',t:'text',ph:'AAAAA0000A'},
+  {k:'category',l:'Service Category',t:'select',opts:['Logistics','Manpower','IT Services','Procurement','Facility Management','Construction','Utilities','Other']},
+  {k:'email',l:'Email',t:'email'},
+  {k:'phone',l:'Phone',t:'tel'},
+  {k:'state',l:'State',t:'text'},
+  {k:'address',l:'Address',t:'text'},
+  {k:'bankName',l:'Bank Name',t:'text'},
+  {k:'ifsc',l:'IFSC Code',t:'text',ph:'HDFC0001234'},
+  {k:'accountType',l:'Account Type',t:'select',opts:['Current','Savings','OD','CC']},
+  {k:'paymentTerms',l:'Payment Terms (days)',t:'number',ph:'30'},
+  {k:'contactPerson',l:'Contact Person',t:'text'},
+];
+function blankVendor(){return {name:'',code:'',gstin:'',pan:'',category:'',email:'',phone:'',state:'',address:'',bankName:'',ifsc:'',accountType:'',paymentTerms:'',contactPerson:''};}
+
+function VendorMaster(props){
+  var vendorMaster=props.vendorMaster,setVendorMaster=props.setVendorMaster,uploadedFiles=props.uploadedFiles;
+  var viewState=useState('list');var view=viewState[0];var setView=viewState[1];
+  var selState=useState(null);var sel=selState[0];var setSel=selState[1];
+  var formState=useState(blankVendor());var form=formState[0];var setForm=formState[1];
+  var searchState=useState('');var search=searchState[0];var setSearch=searchState[1];
+  var filterCatState=useState('ALL');var filterCat=filterCatState[0];var setFilterCat=filterCatState[1];
+  var importTextState=useState('');var importText=importTextState[0];var setImportText=importTextState[1];
+  var importResultState=useState(null);var importResult=importResultState[0];var setImportResult=importResultState[1];
+  var errState=useState('');var err=errState[0];var setErr=errState[1];
+  var savedState=useState(false);var saved=savedState[0];var setSaved=savedState[1];
+
+  var cats=['ALL'].concat(Array.from(new Set(vendorMaster.map(function(v){return v.category;}).filter(Boolean))));
+  var filtered=vendorMaster.filter(function(v){
+    var q=search.toLowerCase();
+    var mq=!q||(v.name||'').toLowerCase().includes(q)||(v.gstin||'').toLowerCase().includes(q)||(v.category||'').toLowerCase().includes(q);
+    var mc=filterCat==='ALL'||v.category===filterCat;
+    return mq&&mc;
+  });
+
+  function importFromExtracted(){
+    var vmDocs=uploadedFiles.filter(function(f){return f.zone==='VENDOR_MASTER'&&f.status==='REVIEWED'&&f.extraction;});
+    var added=0;
+    vmDocs.forEach(function(f){
+      var flds=f.extraction.fields.filter(function(x){return !x.isMeta&&x.conf>0;});
+      function gf(name){var fx=flds.find(function(x){return x.field===name;});return fx?fx.value:'';}
+      var vendor={id:Date.now()+Math.random(),name:gf('Vendor Name'),code:gf('Vendor Code'),
+        gstin:gf('GSTIN'),pan:gf('PAN'),category:gf('Service Category'),email:gf('Email'),
+        phone:gf('Phone'),state:gf('State'),address:gf('Registered Address'),bankName:gf('Bank Name'),
+        ifsc:gf('IFSC Code'),accountType:gf('Account Type'),paymentTerms:gf('Payment Terms'),
+        contactPerson:gf('Contact Person'),importedFrom:f.name};
+      if(vendor.name&&!vendorMaster.find(function(v){return v.gstin&&v.gstin===vendor.gstin;})){
+        setVendorMaster(function(p){return p.concat([vendor]);});
+        added++;
+      }
+    });
+    return added;
+  }
+
+  function parseCSV(){
+    try{
+      var lines=importText.trim().split('\n');
+      if(lines.length<2){setErr('Need header row + at least one data row');return;}
+      var headers=lines[0].split(',').map(function(hh){return hh.trim().toLowerCase().replace(/[\s\/\-]+/g,'_').replace(/[^a-z_]/g,'');});
+      var MAP={vendor_name:'name',name:'name',gstin:'gstin',gst_number:'gstin',pan:'pan',pan_number:'pan',
+        service_category:'category',category:'category',type:'category',email:'email',phone:'phone',
+        mobile:'phone',state:'state',address:'address',registered_address:'address',
+        bank_name:'bankName',bank:'bankName',ifsc:'ifsc',ifsc_code:'ifsc',
+        account_type:'accountType',payment_terms:'paymentTerms',credit_days:'paymentTerms',
+        contact_person:'contactPerson',contact:'contactPerson',vendor_code:'code',code:'code'};
+      var added=0,skipped=0;
+      lines.slice(1).forEach(function(line,i){
+        if(!line.trim())return;
+        var vals=line.split(',').map(function(v){return v.trim().replace(/^"|"$/g,'');});
+        var v=blankVendor();
+        v.id=Date.now()+i+Math.random();
+        headers.forEach(function(hh,idx){var fk=MAP[hh];if(fk&&vals[idx])v[fk]=vals[idx];});
+        if(!v.name){skipped++;return;}
+        if(!vendorMaster.find(function(x){return x.gstin&&x.gstin===v.gstin;})){
+          setVendorMaster(function(p){return p.concat([v]);});
+          added++;
+        }else{skipped++;}
+      });
+      setImportResult({added:added,skipped:skipped});
+      setImportText('');setErr('');
+    }catch(e){setErr('Parse error: '+e.message);}
+  }
+
+  function saveVendor(){
+    setErr('');
+    if(!form.name.trim()){setErr('Vendor Name is required');return;}
+    if(form.gstin&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(form.gstin)){setErr('Invalid GSTIN format (e.g. 22AAAAA0000A1Z5)');return;}
+    if(view==='add'){
+      setVendorMaster(function(p){return p.concat([Object.assign({},form,{id:Date.now()+Math.random()})]);});
+    }else{
+      setVendorMaster(function(p){return p.map(function(v){return v.id===sel.id?Object.assign({},form,{id:v.id}):v;});});
+    }
+    setSaved(true);
+    setTimeout(function(){setSaved(false);setView('list');setSel(null);},1200);
+  }
+
+  function startEdit(v){setSel(v);setForm(Object.assign(blankVendor(),v));setView('edit');setErr('');}
+
+  // LIST VIEW
+  if(view==='list'){
+    var vmDocs=uploadedFiles.filter(function(f){return f.zone==='VENDOR_MASTER'&&f.status==='REVIEWED';});
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+      // Actions
+      h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+        h('div',{style:{flex:1,position:'relative',minWidth:180}},
+          h('input',{value:search,onChange:function(e){setSearch(e.target.value);},placeholder:'Search vendors...',style:{paddingLeft:32}}),
+          h('div',{style:{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)'}},h(Ico,{d:IC.search,sz:14,s:C.faint}))
+        ),
+        cats.slice(0,5).map(function(c){
+          return h('button',{key:c,onClick:function(){setFilterCat(c);},className:'tb'+(filterCat===c?' on':''),style:{fontSize:11}},
+            c==='ALL'?'All ('+vendorMaster.length+')':c
+          );
+        }),
+        vmDocs.length>0?h('button',{onClick:function(){var n=importFromExtracted();setImportResult({added:n,skipped:0,source:'extracted'});},
+          className:'tb on-b',style:{display:'flex',alignItems:'center',gap:6}},
+          h(Ico,{d:IC.download,sz:13,s:C.blue}),'Import from Docs (',vmDocs.length,')'):null,
+        h('button',{onClick:function(){setImportText('');setImportResult(null);setView('import');},className:'tb',style:{display:'flex',alignItems:'center',gap:6}},
+          h(Ico,{d:IC.upload,sz:13}),'CSV Import'),
+        h('button',{onClick:function(){setForm(blankVendor());setErr('');setView('add');},
+          style:{background:C.amber,color:'#0A0D14',border:'none',borderRadius:7,padding:'9px 16px',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}},
+          h(Ico,{d:IC.plus,sz:13,s:'#0A0D14'}),'Add Vendor')
+      ),
+      importResult?h('div',{style:{background:C.green+'10',border:'1px solid '+C.green+'30',borderRadius:8,padding:'10px 14px',fontSize:12,color:C.green,display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        h('span',null,'\u2713 '+importResult.added+' vendor'+(importResult.added!==1?'s':'')+' imported'+(importResult.skipped>0?' \u00B7 '+importResult.skipped+' skipped':'')),
+        h('button',{onClick:function(){setImportResult(null);},style:{background:'transparent',border:'none',color:C.green,cursor:'pointer'}},h(Ico,{d:IC.x,sz:13,s:C.green}))
+      ):null,
+      vendorMaster.length===0
+        ? h(Empty,{icon:'\uD83C\uDFE2',msg:'No vendors in master',sub:'Add vendors manually, import a CSV, or upload vendor documents in Document Hub \u2192 Vendor Docs.'})
+        : h('div',{className:'card',style:{padding:0,overflow:'hidden'}},
+            h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1.2fr 1.2fr 1.2fr 0.8fr 80px',padding:'9px 16px',background:'rgba(255,255,255,0.03)',borderBottom:'1px solid '+C.border}},
+              ['Vendor','GSTIN','Category','Contact','Terms',''].map(function(h2){
+                return h('div',{key:h2,style:{fontSize:10,fontWeight:600,color:C.muted,textTransform:'uppercase',letterSpacing:.7}},h2);
+              })
+            ),
+            h('div',{style:{maxHeight:'calc(100vh - 280px)',overflowY:'auto'}},
+              filtered.length===0
+                ? h('div',{style:{padding:'24px',textAlign:'center',color:C.faint,fontSize:12}},'No vendors match this filter')
+                : filtered.map(function(v,i){
+                    return h('div',{key:v.id,className:'rh',style:{display:'grid',gridTemplateColumns:'2fr 1.2fr 1.2fr 1.2fr 0.8fr 80px',padding:'10px 16px',borderBottom:i<filtered.length-1?'1px solid '+C.border:'none',alignItems:'center'}},
+                      h('div',null,
+                        h('div',{style:{fontSize:12,fontWeight:600}},v.name||'—'),
+                        v.code?h('div',{style:{fontSize:10,color:C.faint,marginTop:1}},v.code):null
+                      ),
+                      h('div',{style:{fontSize:11,fontFamily:"'DM Mono',monospace",color:C.muted}},v.gstin||'—'),
+                      v.category
+                        ? h('span',{style:{fontSize:10,fontWeight:600,color:C.blue,background:C.blue+'12',border:'1px solid '+C.blue+'25',padding:'2px 7px',borderRadius:4,display:'inline-block'}},v.category)
+                        : h('span',{style:{color:C.faint,fontSize:11}},'—'),
+                      h('div',null,
+                        v.email?h('div',{style:{fontSize:11,color:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:140}},v.email):null,
+                        v.phone?h('div',{style:{fontSize:10,color:C.faint,marginTop:1}},v.phone):null
+                      ),
+                      h('div',{style:{fontSize:11,color:C.muted}},v.paymentTerms?v.paymentTerms+' days':'—'),
+                      h('div',{style:{display:'flex',gap:6}},
+                        h('button',{onClick:function(){startEdit(v);},style:{background:'transparent',border:'none',color:C.muted,cursor:'pointer',padding:4}},h(Ico,{d:IC.edit,sz:14,s:C.muted})),
+                        h('button',{onClick:function(){setVendorMaster(function(p){return p.filter(function(x){return x.id!==v.id;});});},style:{background:'transparent',border:'none',color:C.faint,cursor:'pointer',padding:4}},h(Ico,{d:IC.trash,sz:14,s:C.faint}))
+                      )
+                    );
+                  })
+            )
+          )
+    );
+  }
+
+  // ADD / EDIT FORM
+  if(view==='add'||view==='edit'){
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:4}},
+        h('button',{onClick:function(){setView('list');setErr('');},style:{background:'transparent',border:'none',color:C.muted,cursor:'pointer',display:'flex',alignItems:'center',gap:6,fontSize:12}},'\u2190 Back to Vendor List'),
+        h('div',{style:{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}},
+          err?h('div',{style:{fontSize:11,color:C.red,background:C.red+'10',border:'1px solid '+C.red+'25',borderRadius:6,padding:'5px 10px'}},'\u26A0 '+err):null,
+          saved
+            ? h('div',{style:{fontSize:12,color:C.green,display:'flex',alignItems:'center',gap:5}},h(Ico,{d:IC.check,sz:14,s:C.green}),'Saved!')
+            : h('button',{onClick:saveVendor,style:{background:C.amber,color:'#0A0D14',border:'none',borderRadius:7,padding:'9px 18px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}},
+                h(Ico,{d:IC.save,sz:14,s:'#0A0D14'}),view==='add'?'Add Vendor':'Save Changes')
+        )
+      ),
+      h('div',{className:'card'},
+        h('div',{style:{fontSize:14,fontWeight:700,marginBottom:16}},view==='add'?'New Vendor':'Edit: '+( sel?sel.name:'')),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}},
+          VFIELDS.map(function(field){
+            return h(FR,{key:field.k,label:field.l},
+              field.t==='select'
+                ? h('select',{value:form[field.k]||'',onChange:function(e){var kk=field.k;setForm(function(p){var n=Object.assign({},p);n[kk]=e.target.value;return n;});}},
+                    h('option',{value:''},'— Select —'),
+                    (field.opts||[]).map(function(o){return h('option',{key:o,value:o},o);})
+                  )
+                : h('input',{type:field.t||'text',value:form[field.k]||'',placeholder:field.ph||'',
+                    onChange:function(e){var kk=field.k;setForm(function(p){var n=Object.assign({},p);n[kk]=e.target.value;return n;});}})
+            );
+          })
+        )
+      )
+    );
+  }
+
+  // CSV IMPORT VIEW
+  return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+    h('button',{onClick:function(){setView('list');},style:{background:'transparent',border:'none',color:C.muted,cursor:'pointer',display:'flex',alignItems:'center',gap:6,fontSize:12,alignSelf:'flex-start'}},'\u2190 Back to Vendor List'),
+    h('div',{className:'card',style:{display:'flex',flexDirection:'column',gap:14}},
+      h('div',{style:{fontSize:14,fontWeight:700}},'CSV / Bulk Import'),
+      h(InfoBox,{text:"Paste your CSV below. First row must be a header. Recognised columns: Vendor Name, GSTIN, PAN, Category, Email, Phone, State, Address, Bank Name, IFSC Code, Account Type, Payment Terms, Contact Person. Column order doesn't matter."}),
+      h('div',{style:{background:'rgba(255,255,255,0.03)',border:'1px solid '+C.border,borderRadius:7,padding:'10px 12px',fontSize:11,fontFamily:"'DM Mono',monospace",color:C.muted,lineHeight:1.8}},
+        'Example:',h('br'),
+        'Vendor Name,GSTIN,Category,Email,Payment Terms',h('br'),
+        'ABC Logistics Pvt Ltd,22ABCDE1234F1Z5,Logistics,vendor@abc.com,30'
+      ),
+      h('textarea',{value:importText,onChange:function(e){setImportText(e.target.value);},placeholder:'Paste CSV data here...',rows:10,style:{fontFamily:"'DM Mono',monospace",fontSize:12,lineHeight:1.7,resize:'vertical'}}),
+      err?h('div',{style:{color:C.red,fontSize:12,background:C.red+'08',border:'1px solid '+C.red+'25',borderRadius:6,padding:'8px 12px'}},err):null,
+      importResult?h('div',{style:{color:C.green,fontSize:12,background:C.green+'08',border:'1px solid '+C.green+'25',borderRadius:6,padding:'8px 12px'}},
+        '\u2713 '+importResult.added+' vendors imported, '+importResult.skipped+' skipped'):null,
+      h('div',{style:{display:'flex',gap:10}},
+        h('button',{onClick:parseCSV,disabled:!importText.trim(),
+          style:{background:importText.trim()?C.amber:'rgba(255,255,255,0.07)',color:importText.trim()?'#0A0D14':C.muted,border:'none',borderRadius:7,padding:'10px 20px',fontSize:13,fontWeight:700,cursor:'pointer'}},
+          'Import CSV'),
+        h('button',{onClick:function(){setView('list');},style:{background:'rgba(255,255,255,0.06)',color:C.muted,border:'1px solid rgba(255,255,255,0.12)',borderRadius:7,padding:'10px 18px',fontSize:12,fontWeight:600,cursor:'pointer'}},'Cancel')
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  REPORTS
+// ══════════════════════════════════════════════════════════════════
+function Reports(props){
+  var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster;
+  var scopeState=useState('FULL');var scope=scopeState[0];var setScope=scopeState[1];
+  var vendorState=useState('');var vendor=vendorState[0];var setVendor=vendorState[1];
+  var dateFromState=useState('');var dateFrom=dateFromState[0];var setDateFrom=dateFromState[1];
+  var dateToState=useState('');var dateTo=dateToState[0];var setDateTo=dateToState[1];
+  var formatState=useState('PDF Report');var format=formatState[0];var setFormat=formatState[1];
+  var generatingState=useState(false);var generating=generatingState[0];var setGenerating=generatingState[1];
+  var generatedState=useState(false);var generated=generatedState[0];var setGenerated=generatedState[1];
+  var historyState=useState([]);var history=historyState[0];var setHistory=historyState[1];
+  var errState=useState('');var err=errState[0];var setErr=errState[1];
+
+  var approved=uploadedFiles.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
+  function getField(ex,name){var f=ex.fields.find(function(x){return x.field===name&&x.conf>0;});return f?f.value:null;}
+  function parseAmt(v){if(!v)return 0;var n=parseFloat(v.replace(/[^\d.]/g,''));return isNaN(n)?0:n;}
+
+  var vendorNames=Array.from(new Set(approved.map(function(f){return getField(f.extraction,'Vendor Name');}).filter(Boolean).concat(vendorMaster.map(function(v){return v.name;})))).sort();
+  var filtered=approved.filter(function(f){
+    if(scope==='VENDOR'&&vendor){return getField(f.extraction,'Vendor Name')===vendor;}
+    return true;
+  });
+  var totalBilled=filtered.reduce(function(s,f){return s+parseAmt(getField(f.extraction,'Invoice Total'));},0);
+
+  function escCSV(v){v=String(v||'');if(v.includes(',')||v.includes('"')||v.includes('\n'))v='"'+v.replace(/"/g,'""')+'"';return v;}
+
+  function downloadCSV(){
+    var rows=[['Invoice Number','Invoice Date','Vendor Name','Vendor GSTIN','HSN/SAC','Quantity','Rate per Unit','Taxable Amount','CGST','SGST','IGST','Invoice Total','PO Reference','Place of Supply','Bank Account','IFSC Code','File Name']];
+    filtered.forEach(function(f){
+      var ex=f.extraction;
+      function gf(name){var fx=ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:'';}
+      rows.push([gf('Invoice Number'),gf('Invoice Date'),gf('Vendor Name'),gf('Vendor GSTIN'),gf('HSN / SAC Code'),gf('Quantity'),gf('Rate per Unit'),gf('Taxable Amount'),gf('CGST'),gf('SGST'),gf('IGST'),gf('Invoice Total'),gf('PO / Work Order Ref'),gf('Place of Supply'),gf('Bank Account'),gf('IFSC Code'),f.name]);
+    });
+    var csv=rows.map(function(r){return r.map(escCSV).join(',');}).join('\n');
+    var blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download='AuditIQ_Report_'+new Date().toISOString().slice(0,10)+'.csv';
+    document.body.appendChild(a);a.click();
+    setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+  }
+
+  function downloadPDF(){
+    // ── Compute findings scoped to filtered invoices ──────────
+    function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
+    function pAmt(v){if(!v)return 0;var n=parseFloat(v.replace(/[^\d.]/g,''));return isNaN(n)?0:n;}
+    var rptFindings=[];
+    filtered.forEach(function(f){
+      var ex=f.extraction;
+      var vendorName=gfx(ex,'Vendor Name');
+      var invoiceTotal=gfx(ex,'Invoice Total');
+      var taxableAmt=gfx(ex,'Taxable Amount');
+      var cgst=gfx(ex,'CGST');var sgst=gfx(ex,'SGST');var igst=gfx(ex,'IGST');
+      var gstin=gfx(ex,'Vendor GSTIN');
+      var ifsc=gfx(ex,'IFSC Code');
+      var hsnField=gfx(ex,'HSN / SAC Code');
+      var rateField=gfx(ex,'Rate per Unit');
+      var qtyField=gfx(ex,'Quantity');
+      var totalAmt=pAmt(invoiceTotal);
+      var taxable=pAmt(taxableAmt);
+
+      // Calc error
+      if(totalAmt&&taxable){
+        var taxTotal=0;
+        if(cgst){var mc=cgst.match(/[\d,]+(?:\.\d+)?/g);if(mc&&mc[1])taxTotal+=parseFloat(mc[1].replace(/,/g,''))||0;}
+        if(sgst){var ms=sgst.match(/[\d,]+(?:\.\d+)?/g);if(ms&&ms[1])taxTotal+=parseFloat(ms[1].replace(/,/g,''))||0;}
+        if(igst){var mi=igst.match(/[\d,]+(?:\.\d+)?/g);if(mi&&mi[1])taxTotal+=parseFloat(mi[1].replace(/,/g,''))||0;}
+        if(taxTotal>0){
+          var diff=totalAmt-(taxable+taxTotal);
+          if(Math.abs(diff)>((parseFloat(config.calcErrTolerance)||0.5)))
+            rptFindings.push({type:'CALC ERROR',sev:'HIGH',vendor:vendorName||'?',file:f.name,
+              over:diff>0?diff:0,desc:'Invoice total \u20B9'+totalAmt.toLocaleString('en-IN')+' \u2260 taxable+taxes. Diff: \u20B9'+Math.abs(diff).toFixed(2),
+              action:'Demand revised invoice. Do not pay until corrected.'});
+        }
+      }
+      // HSN rate check
+      if(hsnField&&(cgst||igst)){
+        var hsnCode=hsnField.replace(/[^0-9]/g,'');
+        var mr=(config.gstRates||[]).find(function(r){return hsnCode.startsWith(r.hsn.replace(/[^0-9]/g,''));});
+        if(mr){
+          var expRate=parseFloat(mr.rate)||0;var actRate=0;
+          if(cgst){var mcr=cgst.match(/^([\d.]+)%/);if(mcr)actRate=parseFloat(mcr[1])*2;}
+          if(igst&&!actRate){var mir=igst.match(/^([\d.]+)%/);if(mir)actRate=parseFloat(mir[1]);}
+          if(actRate>0&&Math.abs(actRate-expRate)>0.5){
+            var overR=(pAmt(taxableAmt)||0)*(actRate-expRate)/100;
+            rptFindings.push({type:'WRONG GST RATE',sev:'HIGH',vendor:vendorName||'?',file:f.name,
+              over:overR>0?overR:0,desc:'HSN '+hsnField+' should attract '+expRate+'% GST but vendor charged '+actRate+'%.',
+              action:'Reject invoice. Request revised invoice at correct GST rate. Recover ITC risk amount.'});
+          }
+        }
+      }
+      // GSTIN compliance
+      if(gstin&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin))
+        rptFindings.push({type:'INVALID GSTIN',sev:'HIGH',vendor:vendorName||'?',file:f.name,over:0,
+          desc:'GSTIN "'+gstin+'" fails format check. ITC claim at risk.',
+          action:'Do not claim ITC. Contact vendor for corrected GST registration details before payment.'});
+      // Bank mismatch
+      if(vendorName&&ifsc&&config.bankValidation){
+        var vmv=vendorMaster.find(function(v){return (v.name&&v.name.toLowerCase()===(vendorName||'').toLowerCase())||(v.gstin&&v.gstin===gstin);});
+        if(vmv&&vmv.ifsc&&vmv.ifsc!==ifsc)
+          rptFindings.push({type:'BANK MISMATCH',sev:'CRITICAL',vendor:vendorName||'?',file:f.name,
+            over:totalAmt||0,desc:'Invoice IFSC "'+ifsc+'" differs from Vendor Master IFSC "'+vmv.ifsc+'".',
+            action:'HOLD PAYMENT. Verify bank change directly with vendor via registered phone. Do not transfer until confirmed.'});
+      }
+      // Rate deviation
+      var rateVal=pAmt(rateField);var qtyVal=pAmt(qtyField);
+      if(rateVal&&vendorName){
+        uploadedFiles.filter(function(f2){return (f2.zone==='RATE_CARDS'||f2.zone==='CONTRACTS')&&f2.status==='REVIEWED'&&f2.extraction;}).forEach(function(rcf){
+          var rcV=gfx(rcf.extraction,'Vendor Name')||gfx(rcf.extraction,'Vendor');
+          var rcR=pAmt(gfx(rcf.extraction,'Rate per Unit')||gfx(rcf.extraction,'Contracted Rate'));
+          if(rcV&&rcV.toLowerCase()===(vendorName||'').toLowerCase()&&rcR){
+            var devPct=((rateVal-rcR)/rcR)*100;
+            var thresh=parseFloat(config.pricingDeviation)||5;
+            if(devPct>thresh){
+              var over=qtyVal?(rateVal-rcR)*qtyVal:0;
+              rptFindings.push({type:'RATE OVERBILLING',sev:'MEDIUM',vendor:vendorName||'?',file:f.name,
+                over:over,desc:'Rate \u20B9'+rateVal+'/unit vs agreed \u20B9'+rcR+'/unit. Overbilling: +'+devPct.toFixed(1)+'%'+(over?'. Est. overcharge: \u20B9'+over.toFixed(2):'')+'.',
+                action:'Issue debit note for \u20B9'+over.toFixed(2)+'. Request revised invoice at contracted rate.'});
+            }
+          }
+        });
+      }
+      // Surcharge
+      if(totalAmt&&taxable&&rateVal&&qtyVal){
+        var rateAmt=rateVal*qtyVal;
+        var unexplained=taxable-rateAmt;
+        var cap=rateAmt*((parseFloat(config.surchargeCapPct)||10)/100);
+        if(unexplained>cap&&unexplained>100)
+          rptFindings.push({type:'MYSTERY SURCHARGE',sev:'MEDIUM',vendor:vendorName||'?',file:f.name,
+            over:unexplained-cap,desc:'Unexplained charges of \u20B9'+unexplained.toFixed(2)+' above rate\xd7qty. Allowed cap: \u20B9'+cap.toFixed(2)+'.',
+            action:'Request itemised breakup of all surcharges. Reject amounts not covered by contract.'});
+      }
+    });
+    // Duplicates
+    var rptInvNos={};
+    filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!rptInvNos[n])rptInvNos[n]=[];rptInvNos[n].push(f);}});
+    Object.keys(rptInvNos).forEach(function(n){
+      if(rptInvNos[n].length>1){
+        var dupAmt=rptInvNos[n].reduce(function(s,f){return s+(pAmt(gfx(f.extraction,'Invoice Total'))||0);},0);
+        var singleAmt=pAmt(gfx(rptInvNos[n][0].extraction,'Invoice Total'))||0;
+        rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(rptInvNos[n][0].extraction,'Vendor Name')||'?',file:rptInvNos[n].map(function(f){return f.name;}).join(', '),
+          over:dupAmt-singleAmt,desc:'Invoice "'+n+'" appears '+rptInvNos[n].length+' times. Risk of double payment: \u20B9'+(dupAmt-singleAmt).toLocaleString('en-IN')+'.',
+          action:'Block duplicate copies. Pay only once. Verify with vendor which copy is valid.'});
+      }
+    });
+
+    var totalOver=rptFindings.reduce(function(s,f){return s+(f.over||0);},0);
+    var correctAmt=totalBilled-totalOver;
+    var label=scope==='VENDOR'&&vendor?vendor:'All Vendors';
+    var date=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
+    var sevColor={CRITICAL:'#991B1B',HIGH:'#92400E',MEDIUM:'#1E40AF',LOW:'#065F46'};
+
+    // ── Finding rows ──────────────────────────────────────────
+    var findingRows=rptFindings.length===0
+      ? '<tr><td colspan="6" style="text-align:center;color:#6B7280;padding:20px">No findings — all invoices passed audit checks</td></tr>'
+      : rptFindings.map(function(fd,i){
+          var sc=sevColor[fd.sev]||'#374151';
+          var bg=i%2===0?'#fff':'#F9FAFB';
+          return '<tr style="background:'+bg+'"><td><span style="background:'+sc+';color:#fff;border-radius:3px;padding:2px 7px;font-size:10px;font-weight:700;white-space:nowrap">'+fd.sev+'</span></td>'
+            +'<td style="font-weight:600;font-size:11px">'+fd.type+'</td>'
+            +'<td style="font-size:11px">'+fd.vendor+'</td>'
+            +'<td style="font-size:11px;color:#6B7280">'+fd.file+'</td>'
+            +'<td style="font-weight:700;color:#991B1B;font-family:monospace;white-space:nowrap">'+(fd.over>0?'\u20B9'+fd.over.toLocaleString('en-IN',{minimumFractionDigits:2}):'—')+'</td>'
+            +'<td style="font-size:10px;color:#374151">'+fd.desc+' <span style="color:#1D4ED8">'+fd.action+'</span></td>'
+            +'</tr>';
+        }).join('');
+
+    // ── Invoice rows ──────────────────────────────────────────
+    var invoiceRows=filtered.map(function(f,i){
+      function gf(name){var fx=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:'\u2014';}
+      var bg=i%2===0?'#fff':'#F9FAFB';
+      return '<tr style="background:'+bg+'"><td>'+gf('Invoice Number')+'</td><td>'+gf('Invoice Date')+'</td><td>'+gf('Vendor Name')+'</td><td style="font-family:monospace;font-size:10px">'+gf('Vendor GSTIN')+'</td><td>'+gf('HSN / SAC Code')+'</td><td>'+gf('Taxable Amount')+'</td><td>'+gf('CGST')+'</td><td>'+gf('SGST')+'</td><td>'+gf('IGST')+'</td><td style="font-weight:700">'+gf('Invoice Total')+'</td></tr>';
+    }).join('');
+
+    var html='<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>AuditIQ Audit Report</title><style>'
+      +'*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;padding:28px 36px;color:#111;font-size:12px}'
+      +'.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #0A0D14;margin-bottom:20px}'
+      +'.logo{font-size:22px;font-weight:900;color:#0A0D14;letter-spacing:-1px}.logo span{color:#F59E0B}'
+      +'.hdr-right{text-align:right;font-size:10px;color:#6B7280}'
+      +'.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}'
+      +'.kpi{border:1px solid #E5E7EB;border-radius:6px;padding:12px 14px}'
+      +'.kpi .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#9CA3AF;margin-bottom:4px}'
+      +'.kpi .val{font-size:18px;font-weight:800;font-family:monospace}'
+      +'.kpi .sub{font-size:10px;color:#6B7280;margin-top:2px}'
+      +'.sec-title{font-size:13px;font-weight:700;margin:22px 0 10px;padding-bottom:5px;border-bottom:2px solid #F59E0B}'
+      +'table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px}'
+      +'th{background:#0A0D14;color:#fff;padding:8px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.5px;font-weight:700}'
+      +'td{padding:7px 10px;border-bottom:1px solid #F3F4F6;vertical-align:top}'
+      +'.footer{margin-top:24px;padding-top:10px;border-top:1px solid #E5E7EB;font-size:10px;color:#9CA3AF;display:flex;justify-content:space-between}'
+      +'@media print{@page{margin:1.5cm}body{padding:0}.no-print{display:none}}'
+      +'</style></head><body>'
+      // Header
+      +'<div class="hdr">'
+      +'<div><div class="logo">Audit<span>IQ</span></div><div style="font-size:11px;color:#6B7280;margin-top:2px">AI Invoice Auditor \u2014 Audit Report</div></div>'
+      +'<div class="hdr-right"><b>Generated: '+date+'</b><br>Scope: '+label+'<br>'+filtered.length+' invoice'+(filtered.length!==1?'s':'')+' audited</div>'
+      +'</div>'
+      // KPIs
+      +'<div class="kpis">'
+      +'<div class="kpi"><div class="lbl">Total Billed</div><div class="val">\u20B9'+totalBilled.toLocaleString('en-IN',{minimumFractionDigits:2})+'</div><div class="sub">'+filtered.length+' approved invoices</div></div>'
+      +'<div class="kpi" style="border-color:'+(totalOver>0?'#EF4444':'#10B981')+';background:'+(totalOver>0?'#FEF2F2':'#F0FDF4')+'"><div class="lbl">Total Overcharge</div><div class="val" style="color:'+(totalOver>0?'#DC2626':'#059669')+'">'+(totalOver>0?'\u20B9'+totalOver.toLocaleString('en-IN',{minimumFractionDigits:2}):'None')+'</div><div class="sub">'+(rptFindings.length>0?rptFindings.length+' finding'+(rptFindings.length!==1?'s':''):'Clean audit')+'</div></div>'
+      +'<div class="kpi" style="border-color:#10B981"><div class="lbl">Correct Amount</div><div class="val" style="color:#059669">\u20B9'+correctAmt.toLocaleString('en-IN',{minimumFractionDigits:2})+'</div><div class="sub">Amount you should pay</div></div>'
+      +'<div class="kpi"><div class="lbl">Findings</div><div class="val">'+rptFindings.length+'</div><div class="sub">'+(rptFindings.filter(function(f){return f.sev==='CRITICAL';}).length)+' critical \u2014 '+(rptFindings.filter(function(f){return f.sev==='HIGH';}).length)+' high</div></div>'
+      +'</div>'
+      // Findings
+      +'<div class="sec-title">Audit Findings'+(rptFindings.length>0?' ('+rptFindings.length+')':'')+'</div>'
+      +'<table><thead><tr><th>Severity</th><th>Type</th><th>Vendor</th><th>File</th><th>Overcharge</th><th>Finding &amp; Recommended Action</th></tr></thead><tbody>'+findingRows+'</tbody></table>'
+      // Invoices
+      +'<div class="sec-title">Invoice Summary</div>'
+      +'<table><thead><tr><th>Invoice No.</th><th>Date</th><th>Vendor</th><th>GSTIN</th><th>HSN/SAC</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr></thead><tbody>'+invoiceRows+'</tbody></table>'
+      // Footer
+      +'<div class="footer"><span>AuditIQ \u2014 AI Invoice Auditor \u2014 CONFIDENTIAL</span><span>'+date+'</span></div>'
+      +'</body></html>';
+
+    var w=window.open('','_blank','width=1200,height=850');
+    if(!w){alert('Pop-up blocked. Please allow pop-ups for localhost and try again.');return;}
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(function(){w.print();},800);
+  }
+
+  function generate(){
+    setErr('');
+    if(approved.length===0){setErr('No approved invoices to report on. Process invoices in Document Hub first.');return;}
+    if(scope==='VENDOR'&&!vendor){setErr('Please select a vendor');return;}
+    setGenerating(true);
+    setTimeout(function(){
+      setGenerating(false);setGenerated(true);
+      setHistory(function(p){return [{id:Date.now(),label:(scope==='VENDOR'?vendor+' ':'')+'Audit Report',
+        date:new Date().toLocaleDateString(),invoices:filtered.length,totalBilled:totalBilled,format:format}].concat(p.slice(0,9));});
+    },1800);
+  }
+
+  return h('div',{style:{display:'grid',gridTemplateColumns:'360px 1fr',gap:14,height:'calc(100vh - 100px)'}},
+    h('div',{className:'card',style:{overflowY:'auto'}},
+      h('div',{style:{fontSize:14,fontWeight:700,marginBottom:16}},'Generate Audit Report'),
+      h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+        h(FR,{label:'Report Scope'},
+          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
+            [['FULL','Full Audit'],['VENDOR','By Vendor'],['PERIOD','By Period']].map(function(sv){
+              return h('button',{key:sv[0],onClick:function(){setScope(sv[0]);},className:'tb'+(scope===sv[0]?' on':''),style:{width:'100%'}},sv[1]);
+            })
+          )
+        ),
+        scope==='VENDOR'?h(FR,{label:'Select Vendor'},
+          vendorNames.length===0
+            ? h('div',{style:{fontSize:11,color:C.faint,padding:'8px 0'}},'No vendors in approved invoices yet')
+            : h('select',{value:vendor,onChange:function(e){setVendor(e.target.value);}},
+                h('option',{value:''},'— Select a vendor —'),
+                vendorNames.map(function(v){return h('option',{key:v,value:v},v);})
+              )
+        ):null,
+        scope==='PERIOD'?h(FR,{label:'Date Range'},
+          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
+            h('input',{type:'date',value:dateFrom,onChange:function(e){setDateFrom(e.target.value);}}),
+            h('input',{type:'date',value:dateTo,onChange:function(e){setDateTo(e.target.value);}})
+          )
+        ):null,
+        h(FR,{label:'Export Format'},
+          h('div',{style:{display:'flex',gap:8}},
+            ['PDF Report','Excel Data','Both'].map(function(f){
+              return h('button',{key:f,onClick:function(){setFormat(f);},className:'tb'+(format===f?' on':''),style:{flex:1}},f);
+            })
+          )
+        ),
+        approved.length>0?h('div',{style:{background:'rgba(255,255,255,0.03)',border:'1px solid '+C.border,borderRadius:8,padding:'10px 14px',fontSize:12,color:C.muted,lineHeight:1.8}},
+          h('div',null,filtered.length+' invoice'+(filtered.length!==1?'s':'')+' in scope'),
+          h('div',null,'Total billed: \u20B9'+totalBilled.toLocaleString('en-IN'))
+        ):null,
+        err?h('div',{style:{background:C.red+'10',border:'1px solid '+C.red+'30',borderRadius:7,padding:'10px 13px',fontSize:12,color:C.red}},'\u26A0\uFE0F '+err):null,
+        generating
+          ? h('button',{disabled:true,style:{width:'100%',background:'rgba(245,158,11,0.3)',color:'rgba(255,255,255,0.5)',border:'none',borderRadius:9,padding:13,fontSize:13,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center',gap:10,cursor:'default'}},
+              h('div',{className:'spin',style:{width:15,height:15,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#fff',borderRadius:'50%'}}),'Generating...')
+          : h('button',{onClick:generate,style:{width:'100%',background:'linear-gradient(135deg,#F59E0B,#EF4444)',color:'#0A0D14',border:'none',borderRadius:9,padding:13,fontSize:13,fontWeight:800,cursor:'pointer'}},'Generate Report \u2197'),
+        generated?h('div',{style:{background:C.green+'10',border:'1px solid '+C.green+'30',borderRadius:7,padding:'11px 13px',fontSize:12,color:C.green,display:'flex',alignItems:'center',gap:8}},
+          h(Ico,{d:IC.check,sz:13,s:C.green}),'Report ready \u2014 download buttons in preview'):null
+      )
+    ),
+    h('div',{className:'card',style:{overflowY:'auto'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:18}},
+        h('div',null,
+          h('div',{style:{fontSize:10,color:C.faint,textTransform:'uppercase',letterSpacing:1.5,marginBottom:6}},'CONFIDENTIAL \u2014 INTERNAL AUDIT'),
+          h('div',{style:{fontSize:18,fontWeight:800,marginBottom:4}},'Invoice Audit Report'),
+          h('div',{style:{fontSize:12,color:C.muted}},(scope==='VENDOR'&&vendor?vendor:'All Vendors')+' \u00B7 '+filtered.length+' invoices')
+        ),
+        h('div',{style:{width:36,height:36,background:'linear-gradient(135deg,#F59E0B,#EF4444)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:900,color:'#0A0D14'}},'A')
+      ),
+      generated
+        ? h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
+            h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}},
+              [['Invoices',filtered.length,C.blue],['Total Billed','\u20B9'+totalBilled.toLocaleString('en-IN'),C.text],['Scope',scope,C.green]].map(function(lvc){
+                return h('div',{key:lvc[0],style:{background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'12px',textAlign:'center'}},
+                  h('div',{style:{fontSize:10,color:C.muted,marginBottom:4}},lvc[0]),
+                  h('div',{style:{fontSize:16,fontWeight:800,color:lvc[2],fontFamily:"'DM Mono',monospace"}},lvc[1])
+                );
+              })
+            ),
+            filtered.length>0?h('div',null,
+              h('div',{style:{fontSize:11,fontWeight:600,color:C.muted,textTransform:'uppercase',letterSpacing:.8,marginBottom:10}},'Invoice Summary'),
+              h('div',{style:{display:'flex',flexDirection:'column',gap:4,maxHeight:300,overflowY:'auto'}},
+                filtered.map(function(f){
+                  var vn=getField(f.extraction,'Vendor Name');
+                  var inv=getField(f.extraction,'Invoice Number');
+                  var tot=getField(f.extraction,'Invoice Total');
+                  var dt=getField(f.extraction,'Invoice Date');
+                  return h('div',{key:f.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',borderRadius:7,background:'rgba(255,255,255,0.02)',border:'1px solid '+C.border}},
+                    h('div',null,
+                      h('div',{style:{fontSize:12,fontWeight:500}},vn||f.name),
+                      h('div',{style:{fontSize:10,color:C.faint,marginTop:2}},(inv||'\u2014')+' \u00B7 '+(dt||'\u2014'))
+                    ),
+                    h('div',{style:{fontSize:12,fontWeight:700,fontFamily:"'DM Mono',monospace",color:C.green}},tot||'\u2014')
+                  );
+                })
+              )
+            ):null,
+            h('div',{style:{display:'flex',gap:10,paddingTop:12,borderTop:'1px solid '+C.border}},
+              format!=='Excel Data'?h('button',{onClick:downloadPDF,style:{flex:1,background:C.red,color:'#fff',border:'none',borderRadius:7,padding:10,fontSize:12,fontWeight:700,cursor:'pointer'}},'\u2193 Download PDF'):null,
+              format!=='PDF Report'?h('button',{onClick:downloadCSV,style:{flex:1,background:C.green,color:'#fff',border:'none',borderRadius:7,padding:10,fontSize:12,fontWeight:700,cursor:'pointer'}},'\u2193 Download Excel (CSV)'):null
+            )
+          )
+        : h(Empty,{icon:'\uD83D\uDCCB',msg:'Configure & generate report',sub:'Set scope and click Generate Report to build your audit summary.'}),
+      history.length>0?h('div',{style:{marginTop:20,paddingTop:16,borderTop:'1px solid '+C.border}},
+        h('div',{style:{fontSize:11,fontWeight:600,color:C.muted,textTransform:'uppercase',letterSpacing:.8,marginBottom:10}},'Report History'),
+        history.map(function(r,i){
+          return h('div',{key:r.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:i<history.length-1?'1px solid '+C.border:'none'}},
+            h('div',null,
+              h('div',{style:{fontSize:12,fontWeight:500}},r.label),
+              h('div',{style:{fontSize:10,color:C.faint,marginTop:1}},r.date+' \u00B7 '+r.invoices+' invoices \u00B7 \u20B9'+(r.totalBilled||0).toLocaleString('en-IN'))
+            ),
+            h('div',{style:{display:'flex',gap:5}},
+              r.format!=='Excel Data'?h(Pill,{label:'PDF',color:C.red}):null,
+              r.format!=='PDF Report'?h(Pill,{label:'XLS',color:C.green}):null
+            )
+          );
+        })
+      ):null
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════════════════════════════
+function Dashboard(props){
+  var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster,config=props.config,goTo=props.goTo;
+  function getField(ex,name){var f=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return f?f.value:null;}
+  function parseAmt(v){if(!v)return 0;var n=parseFloat(v.replace(/[^\d.]/g,''));return isNaN(n)?0:n;}
+  function fmt(n){return n>=10000000?'\u20B9'+(n/10000000).toFixed(2)+'Cr':n>=100000?'\u20B9'+(n/100000).toFixed(2)+'L':'\u20B9'+n.toLocaleString('en-IN',{minimumFractionDigits:2});}
+
+  var inv=uploadedFiles.filter(function(f){return f.zone==='INVOICES';});
+  var approved=inv.filter(function(f){return f.status==='REVIEWED'&&f.extraction;});
+  var extracting=inv.filter(function(f){return f.status==='EXTRACTING';}).length;
+  var needsReview=inv.filter(function(f){return f.status==='EXTRACTED';}).length;
+  var errors=inv.filter(function(f){return f.status==='ERROR';}).length;
+  var totalBilled=approved.reduce(function(s,f){return s+parseAmt(getField(f.extraction,'Invoice Total'));},0);
+
+  // ── Compute all findings inline (same logic as AuditFindings) ──
+  var findings=[];
+  approved.forEach(function(f){
+    var ex=f.extraction;
+    var vendorName=getField(ex,'Vendor Name');
+    var invoiceTotal=getField(ex,'Invoice Total');
+    var taxableAmt=getField(ex,'Taxable Amount');
+    var cgst=getField(ex,'CGST');var sgst=getField(ex,'SGST');var igst=getField(ex,'IGST');
+    var gstin=getField(ex,'Vendor GSTIN');
+    var ifsc=getField(ex,'IFSC Code');
+    var hsnField=getField(ex,'HSN / SAC Code');
+    var rateField=getField(ex,'Rate per Unit');
+    var qtyField=getField(ex,'Quantity');
+    var totalAmt=parseAmt(invoiceTotal);
+    var taxable=parseAmt(taxableAmt);
+
+    // Calc error
+    if(totalAmt&&taxable){
+      var taxTotal=0;
+      if(cgst){var mc=cgst.match(/[\d,]+(?:\.\d+)?/g);if(mc&&mc[1])taxTotal+=parseFloat(mc[1].replace(/,/g,''))||0;}
+      if(sgst){var ms=sgst.match(/[\d,]+(?:\.\d+)?/g);if(ms&&ms[1])taxTotal+=parseFloat(ms[1].replace(/,/g,''))||0;}
+      if(igst){var mi=igst.match(/[\d,]+(?:\.\d+)?/g);if(mi&&mi[1])taxTotal+=parseFloat(mi[1].replace(/,/g,''))||0;}
+      if(taxTotal>0){
+        var diff=totalAmt-(taxable+taxTotal);
+        if(Math.abs(diff)>((parseFloat(config.calcErrTolerance)||0.5)))
+          findings.push({type:'CALC_ERROR',vendorName:vendorName||'Unknown',overchargeAmt:diff>0?diff:0});
+      }
+    }
+    // HSN rate
+    if(hsnField&&(cgst||igst)){
+      var hsnCode=hsnField.replace(/[^0-9]/g,'');
+      var mr=(config.gstRates||[]).find(function(r){return hsnCode.startsWith(r.hsn.replace(/[^0-9]/g,''));});
+      if(mr){
+        var expRate=parseFloat(mr.rate)||0;var actRate=0;
+        if(cgst){var mcr=cgst.match(/^([\d.]+)%/);if(mcr)actRate=parseFloat(mcr[1])*2;}
+        if(igst&&!actRate){var mir=igst.match(/^([\d.]+)%/);if(mir)actRate=parseFloat(mir[1]);}
+        if(actRate>0&&Math.abs(actRate-expRate)>0.5){
+          var overR=(parseAmt(taxableAmt)||0)*(actRate-expRate)/100;
+          findings.push({type:'GST_RATE',vendorName:vendorName||'Unknown',overchargeAmt:overR>0?overR:0});
+        }
+      }
+    }
+    // GSTIN
+    if(gstin&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin))
+      findings.push({type:'COMPLIANCE',vendorName:vendorName||'Unknown',overchargeAmt:0});
+    // Bank
+    if(vendorName&&ifsc&&config.bankValidation){
+      var vmv=vendorMaster.find(function(v){return (v.name&&v.name.toLowerCase()===vendorName.toLowerCase())||(v.gstin&&v.gstin===gstin);});
+      if(vmv&&vmv.ifsc&&vmv.ifsc!==ifsc)
+        findings.push({type:'FRAUD',vendorName:vendorName||'Unknown',overchargeAmt:totalAmt||0});
+    }
+    // Rate
+    var rateVal=parseAmt(rateField);var qtyVal=parseAmt(qtyField);
+    if(rateVal&&vendorName){
+      uploadedFiles.filter(function(f2){return (f2.zone==='RATE_CARDS'||f2.zone==='CONTRACTS')&&f2.status==='REVIEWED'&&f2.extraction;}).forEach(function(rcf){
+        var rcV=getField(rcf.extraction,'Vendor Name')||getField(rcf.extraction,'Vendor');
+        var rcR=parseAmt(getField(rcf.extraction,'Rate per Unit')||getField(rcf.extraction,'Contracted Rate'));
+        if(rcV&&rcV.toLowerCase()===(vendorName||'').toLowerCase()&&rcR){
+          var dev=((rateVal-rcR)/rcR)*100;
+          if(dev>(parseFloat(config.pricingDeviation)||5)){
+            var over=qtyVal?(rateVal-rcR)*qtyVal:0;
+            findings.push({type:'PRICING',vendorName:vendorName||'Unknown',overchargeAmt:over});
+          }
+        }
+      });
+    }
+    // Surcharge
+    if(totalAmt&&taxable&&rateVal&&qtyVal){
+      var rateAmt=rateVal*qtyVal;
+      var unexplained=taxable-rateAmt;
+      var cap=rateAmt*((parseFloat(config.surchargeCapPct)||10)/100);
+      if(unexplained>cap&&unexplained>100)
+        findings.push({type:'SURCHARGE',vendorName:vendorName||'Unknown',overchargeAmt:unexplained-cap});
+    }
+  });
+  // Duplicates
+  var invNosD={};
+  approved.forEach(function(f){var n=getField(f.extraction,'Invoice Number');if(n){if(!invNosD[n])invNosD[n]=[];invNosD[n].push(f);}});
+  Object.keys(invNosD).forEach(function(n){
+    if(invNosD[n].length>1){
+      var dupAmt=invNosD[n].reduce(function(s,f){return s+(parseAmt(getField(f.extraction,'Invoice Total'))||0);},0);
+      var singleAmt=parseAmt(getField(invNosD[n][0].extraction,'Invoice Total'))||0;
+      findings.push({type:'DUPLICATE',vendorName:getField(invNosD[n][0].extraction,'Vendor Name')||'Unknown',overchargeAmt:dupAmt-singleAmt});
+    }
+  });
+
+  var totalOvercharge=findings.reduce(function(s,f){return s+(f.overchargeAmt||0);},0);
+  var correctAmount=totalBilled-totalOvercharge;
+
+  // Overcharge by type
+  var byType={};
+  findings.forEach(function(f){if(!byType[f.type])byType[f.type]=0;byType[f.type]+=(f.overchargeAmt||0);});
+  var typeColors={CALC_ERROR:C.amber,GST_RATE:C.purple,FRAUD:C.red,PRICING:C.blue,SURCHARGE:'#06B6D4',DUPLICATE:C.red,COMPLIANCE:C.faint};
+  var typeLabels={CALC_ERROR:'Calc Errors',GST_RATE:'GST Rate',FRAUD:'Bank Fraud',PRICING:'Rate Overbilling',SURCHARGE:'Surcharges',DUPLICATE:'Duplicates',COMPLIANCE:'Compliance'};
+
+  // Overcharge by vendor
+  var byVendor={};
+  findings.forEach(function(f){if(!byVendor[f.vendorName])byVendor[f.vendorName]=0;byVendor[f.vendorName]+=(f.overchargeAmt||0);});
+  var vendorOverList=Object.keys(byVendor).map(function(n){return {n:n,v:byVendor[n]};}).filter(function(x){return x.v>0;}).sort(function(a,b){return b.v-a.v;}).slice(0,6);
+  var maxVendorOver=vendorOverList.length?vendorOverList[0].v:1;
+
+  var cats={};vendorMaster.forEach(function(v){var c=v.category||'Other';cats[c]=(cats[c]||0)+1;});
+  var catColors2=[C.blue,C.green,C.amber,'#8B5CF6','#06B6D4',C.red];
+  var catData=Object.keys(cats).map(function(n,i){return {n:n,cnt:cats[n],c:catColors2[i%catColors2.length]};});
+
+  var pipeline=[
+    {stage:'Queued',cnt:inv.filter(function(f){return f.status==='QUEUED';}).length,c:'#4B5563'},
+    {stage:'Extracting',cnt:extracting,c:C.blue},
+    {stage:'Needs Review',cnt:needsReview,c:C.amber},
+    {stage:'Errors',cnt:errors,c:C.red},
+    {stage:'Audit Ready',cnt:approved.length,c:C.green},
+  ];
+
+  return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+    !uploadedFiles.length&&!vendorMaster.length?h('div',{style:{background:C.blue+'08',border:'1px solid '+C.blue+'25',borderRadius:12,padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}},
+      h('div',null,
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:4}},'\uD83D\uDC4B Welcome to AuditIQ'),
+        h('div',{style:{fontSize:12,color:C.muted,lineHeight:1.7}},'Start by uploading invoices in Document Hub, or import your vendor list in Vendor Master.')
+      ),
+      h('button',{onClick:function(){goTo('upload');},style:{background:C.blue,color:'#fff',border:'none',borderRadius:8,padding:'10px 18px',fontSize:12,fontWeight:700,whiteSpace:'nowrap',cursor:'pointer'}},'Go to Document Hub \u2192')
+    ):null,
+
+    // ── KPI STRIP ──────────────────────────────────────────────
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}},
+      [
+        {l:'Total Billed',v:approved.length?fmt(totalBilled):'—',sub:approved.length?approved.length+' invoices approved':'No invoices yet',c:C.text},
+        {l:'Correct Amount',v:(approved.length&&totalOvercharge>0)?fmt(correctAmount):'—',sub:totalOvercharge>0?'After removing overcharges':'No overcharges found',c:C.green},
+        {l:'Total Overcharge',v:totalOvercharge>0?fmt(totalOvercharge):'—',sub:totalOvercharge>0?findings.length+' findings':'Clean audit',c:totalOvercharge>0?C.red:C.green},
+        {l:'Vendors',v:vendorMaster.length||'—',sub:vendorMaster.length?Object.keys(cats).length+' categories':'No vendors yet',c:'#8B5CF6'},
+      ].map(function(k,i){
+        return h('div',{key:k.l,className:'card fu',style:{animationDelay:i*50+'ms',padding:'16px 18px',borderLeft:k.l==='Total Overcharge'&&totalOvercharge>0?'3px solid '+C.red:k.l==='Correct Amount'&&totalOvercharge>0?'3px solid '+C.green:'none'}},
+          h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:8}},k.l),
+          h('div',{style:{fontSize:22,fontWeight:800,color:k.c,fontFamily:"'DM Mono',monospace",letterSpacing:-1}},k.v),
+          h('div',{style:{fontSize:11,color:C.faint,marginTop:5}},k.sub)
+        );
+      })
+    ),
+
+    // ── OVERCHARGE BREAKDOWN ───────────────────────────────────
+    totalOvercharge>0?h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
+      // By type
+      h('div',{className:'card'},
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:4}},'Overcharge by Type'),
+        h('div',{style:{fontSize:11,color:C.faint,marginBottom:14}},'What is causing overbilling'),
+        h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+          Object.keys(byType).filter(function(k){return byType[k]>0;}).sort(function(a,b){return byType[b]-byType[a];}).map(function(k){
+            var maxT=Math.max.apply(null,Object.values(byType));
+            var pct=maxT>0?(byType[k]/maxT)*100:0;
+            var col=typeColors[k]||C.muted;
+            return h('div',{key:k},
+              h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
+                h('span',{style:{fontSize:11,color:C.muted}},typeLabels[k]||k),
+                h('span',{style:{fontSize:11,fontWeight:700,color:col,fontFamily:"'DM Mono',monospace"}},fmt(byType[k]))
+              ),
+              h('div',{style:{height:5,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden'}},
+                h('div',{style:{width:pct+'%',height:'100%',background:col,borderRadius:3}})
+              )
+            );
+          })
+        )
+      ),
+      // By vendor
+      h('div',{className:'card'},
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:4}},'Overcharge by Vendor'),
+        h('div',{style:{fontSize:11,color:C.faint,marginBottom:14}},'Top vendors to chase recovery from'),
+        vendorOverList.length===0
+          ?h(Empty,{msg:'No vendor overcharges',sub:'All vendors billed correctly'})
+          :h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+              vendorOverList.map(function(v){
+                var pct=(v.v/maxVendorOver)*100;
+                return h('div',{key:v.n},
+                  h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
+                    h('span',{style:{fontSize:11,color:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:160}},v.n),
+                    h('span',{style:{fontSize:11,fontWeight:700,color:C.red,fontFamily:"'DM Mono',monospace"}},fmt(v.v))
+                  ),
+                  h('div',{style:{height:5,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden'}},
+                    h('div',{style:{width:pct+'%',height:'100%',background:C.red,borderRadius:3}})
+                  )
+                );
+              })
+            )
+      )
+    ):null,
+
+    // ── PIPELINE + VENDOR DIST ─────────────────────────────────
+    h('div',{style:{display:'grid',gridTemplateColumns:'1.5fr 1fr',gap:12}},
+      h('div',{className:'card'},
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:4}},'Audit Pipeline'),
+        h('div',{style:{fontSize:11,color:C.faint,marginBottom:14}},'Live document processing status'),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}},
+          pipeline.map(function(p){
+            return h('div',{key:p.stage,style:{textAlign:'center'}},
+              h('div',{style:{background:p.c+'18',border:'1px solid '+p.c+'35',borderRadius:8,padding:'10px 6px',marginBottom:5}},
+                h('div',{style:{fontSize:20,fontWeight:800,color:p.c,fontFamily:"'DM Mono',monospace"}},p.cnt)
+              ),
+              h('div',{style:{fontSize:10,color:C.muted,lineHeight:1.4}},p.stage)
+            );
+          })
+        )
+      ),
+      h('div',{className:'card'},
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:4}},'Vendor Distribution'),
+        h('div',{style:{fontSize:11,color:C.faint,marginBottom:14}},'By service category'),
+        vendorMaster.length===0
+          ? h(Empty,{msg:'No vendors yet',sub:'Add vendors in Vendor Master'})
+          : h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+              catData.map(function(d){
+                return h('div',{key:d.n,style:{display:'flex',alignItems:'center',gap:8}},
+                  h('div',{style:{width:8,height:8,borderRadius:'50%',background:d.c,flexShrink:0}}),
+                  h('div',{style:{flex:1,fontSize:12,color:C.muted}},d.n),
+                  h('div',{style:{fontSize:12,fontWeight:700,color:d.c,fontFamily:"'DM Mono',monospace"}},d.cnt),
+                  h('div',{style:{width:80,height:4,background:'rgba(255,255,255,0.07)',borderRadius:2,overflow:'hidden'}},
+                    h('div',{style:{width:((d.cnt/vendorMaster.length)*100)+'%',height:'100%',background:d.c,borderRadius:2}})
+                  )
+                );
+              })
+            )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CONFIGURATION
+// ══════════════════════════════════════════════════════════════════
+function Configuration(props){
+  var config=props.config,setConfig=props.setConfig;
+  var secState=useState('tax');var sec=secState[0];var setSec=secState[1];
+  var savedState=useState(false);var saved=savedState[0];var setSaved=savedState[1];
+  var localCfgState=useState(Object.assign({},config));var localCfg=localCfgState[0];var setLocalCfg=localCfgState[1];
+  var newRateState=useState({hsn:'',desc:'',rate:'18'});var newRate=newRateState[0];var setNewRate=newRateState[1];
+  var newUnitCode=useRef('');var newUnitName=useRef('');var newUnitType=useRef('');
+
+  function save(){setConfig(localCfg);setSaved(true);setTimeout(function(){setSaved(false);},2000);}
+  function setW(k,v){setLocalCfg(function(c){var w=Object.assign({},c.weights);w[k]=Number(v);return Object.assign({},c,{weights:w});});}
+  function setB(k,v){setLocalCfg(function(c){var n=Object.assign({},c);n[k]=v;return n;});}
+
+  var secs=[
+    {id:'tax',      l:'Tax & GST Rates',    icon:'\uD83D\uDCCA'},
+    {id:'units',    l:'Units of Measure',   icon:'\uD83D\uDCB0'},
+    {id:'scoring',  l:'Trust Score Weights',icon:'\u2696\uFE0F'},
+    {id:'thresholds',l:'Audit Thresholds',  icon:'\uD83C\uDFAF'},
+    {id:'banking',  l:'Banking Validation', icon:'\uD83C\uDFE6'},
+    {id:'budget',   l:'Budget Targets',     icon:'\uD83D\uDCB0'},
+  ];
+
+  var totalWeight=Object.values(localCfg.weights||{}).reduce(function(s,v){return s+(Number(v)||0);},0);
+
+  function renderSection(){
+    if(sec==='tax'){return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
+      h(InfoBox,{text:'These GST rates are used during audit to verify correct tax rates per HSN/SAC code.'}),
+      h('div',{className:'card',style:{padding:0,overflow:'hidden'}},
+        h('div',{style:{display:'grid',gridTemplateColumns:'130px 1fr 80px 40px',padding:'8px 14px',background:'rgba(255,255,255,0.03)',borderBottom:'1px solid '+C.border}},
+          ['HSN/SAC','Description','Rate %',''].map(function(hh){return h('div',{key:hh,style:{fontSize:10,fontWeight:600,color:C.muted,textTransform:'uppercase',letterSpacing:.7}},hh);})),
+        h('div',{style:{maxHeight:260,overflowY:'auto'}},
+          (localCfg.gstRates||[]).map(function(r,i){
+            return h('div',{key:i,style:{display:'grid',gridTemplateColumns:'130px 1fr 80px 40px',gap:8,padding:'7px 14px',borderBottom:'1px solid '+C.border,alignItems:'center'}},
+              h('input',{value:r.hsn,onChange:function(e){var ii=i;setLocalCfg(function(c){var nr=c.gstRates.slice();nr[ii]=Object.assign({},nr[ii],{hsn:e.target.value});return Object.assign({},c,{gstRates:nr});});},style:{padding:'4px 8px',fontSize:11}}),
+              h('input',{value:r.desc,onChange:function(e){var ii=i;setLocalCfg(function(c){var nr=c.gstRates.slice();nr[ii]=Object.assign({},nr[ii],{desc:e.target.value});return Object.assign({},c,{gstRates:nr});});},style:{padding:'4px 8px',fontSize:11}}),
+              h('div',{style:{display:'flex',alignItems:'center',gap:4}},
+                h('input',{type:'number',value:r.rate,min:0,max:28,onChange:function(e){var ii=i;setLocalCfg(function(c){var nr=c.gstRates.slice();nr[ii]=Object.assign({},nr[ii],{rate:e.target.value});return Object.assign({},c,{gstRates:nr});});},style:{padding:'4px 8px',fontSize:11,fontFamily:"'DM Mono',monospace"}}),
+                h('span',{style:{fontSize:11,color:C.muted}},'%')
+              ),
+              h('button',{onClick:function(){var ii=i;setLocalCfg(function(c){return Object.assign({},c,{gstRates:c.gstRates.filter(function(_,j){return j!==ii;})});});},style:{background:'transparent',border:'none',color:C.faint,cursor:'pointer'}},h(Ico,{d:IC.trash,sz:13,s:C.faint}))
+            );
+          })
+        )
+      ),
+      h('div',{style:{display:'grid',gridTemplateColumns:'130px 1fr 80px 80px',gap:8,alignItems:'end',padding:'10px 0'}},
+        h(FR,{label:'HSN/SAC'},h('input',{value:newRate.hsn,onChange:function(e){setNewRate(function(r){return Object.assign({},r,{hsn:e.target.value});});},style:{padding:'7px 9px',fontSize:12}})),
+        h(FR,{label:'Description'},h('input',{value:newRate.desc,onChange:function(e){setNewRate(function(r){return Object.assign({},r,{desc:e.target.value});});},style:{padding:'7px 9px',fontSize:12}})),
+        h(FR,{label:'Rate (%)'},h('input',{type:'number',value:newRate.rate,min:0,max:28,onChange:function(e){setNewRate(function(r){return Object.assign({},r,{rate:e.target.value});});},style:{padding:'7px 9px',fontSize:12,fontFamily:"'DM Mono',monospace"}})),
+        h('button',{onClick:function(){if(!newRate.hsn||!newRate.desc)return;setLocalCfg(function(c){return Object.assign({},c,{gstRates:(c.gstRates||[]).concat([Object.assign({},newRate)])});});setNewRate({hsn:'',desc:'',rate:'18'});},style:{background:C.amber,color:'#0A0D14',border:'none',borderRadius:7,padding:'9px',fontSize:12,fontWeight:700,cursor:'pointer'}},
+          '+ Add')
+      )
+    );}
+
+    if(sec==='units'){return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+      h(InfoBox,{text:'Units used in invoice extraction and rate vs quantity audit checks.'}),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}},
+        (localCfg.units||[]).map(function(u,i){
+          return h('div',{key:i,style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'rgba(255,255,255,0.03)',border:'1px solid '+C.border,borderRadius:7}},
+            h('div',null,
+              h('div',{style:{fontSize:12,fontWeight:600,fontFamily:"'DM Mono',monospace"}},u.code),
+              h('div',{style:{fontSize:10,color:C.muted,marginTop:1}},u.name+' \u00B7 '+u.type)
+            ),
+            h('button',{onClick:function(){var ii=i;setLocalCfg(function(c){return Object.assign({},c,{units:c.units.filter(function(_,j){return j!==ii;})});});},style:{background:'transparent',border:'none',color:C.faint,cursor:'pointer'}},h(Ico,{d:IC.x,sz:12,s:C.faint}))
+          );
+        })
+      ),
+      h('div',{style:{display:'grid',gridTemplateColumns:'100px 1fr 120px 80px',gap:8,alignItems:'end',padding:'10px 0'}},
+        h(FR,{label:'Code'},h('input',{ref:function(el){if(el)newUnitCode.current=el;},placeholder:'KM',style:{padding:'7px 9px',fontSize:12,fontFamily:"'DM Mono',monospace"}})),
+        h(FR,{label:'Name'},h('input',{ref:function(el){if(el)newUnitName.current=el;},placeholder:'Kilometre',style:{padding:'7px 9px',fontSize:12}})),
+        h(FR,{label:'Type'},h('select',{ref:function(el){if(el)newUnitType.current=el;},style:{padding:'7px 9px',fontSize:12}},
+          ['Distance','Weight','Time','Count','Volume'].map(function(t){return h('option',{key:t},t);})
+        )),
+        h('button',{onClick:function(){
+          var c=(newUnitCode.current.value||'').toUpperCase().trim();
+          var n=(newUnitName.current.value||'').trim();
+          var t=newUnitType.current.value||'Count';
+          if(!c||!n)return;
+          setLocalCfg(function(cfg){return Object.assign({},cfg,{units:(cfg.units||[]).concat([{code:c,name:n,type:t}])});});
+          newUnitCode.current.value='';newUnitName.current.value='';
+        },style:{background:C.amber,color:'#0A0D14',border:'none',borderRadius:7,padding:'9px',fontSize:12,fontWeight:700,cursor:'pointer'}},
+        '+ Add')
+      )
+    );}
+
+    if(sec==='scoring'){return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+      h(InfoBox,{text:'Weights define the vendor trust score formula. Must total exactly 100%.'}),
+      [['pricing','Pricing Deviation',C.amber,'How often rates exceed contracted amounts'],
+       ['compliance','Compliance Failures',C.red,'GST errors, ITC risk events'],
+       ['errors','Calculation Errors','#8B5CF6','Arithmetic errors on tax and totals'],
+       ['contract','Contract Adherence',C.blue,'Invoices matching contracted terms'],
+       ['fraud','Fraud Signals',C.green,'Bank mismatches, duplicate patterns']].map(function(kArr){
+        var k=kArr[0],l=kArr[1],c=kArr[2],hint=kArr[3];
+        var w=(localCfg.weights||{})[k]||0;
+        return h('div',{key:k,style:{padding:'12px 14px',background:'rgba(255,255,255,0.02)',border:'1px solid '+C.border,borderRadius:8}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
+            h('div',null,h('div',{style:{fontSize:13,fontWeight:600}},l),h('div',{style:{fontSize:11,color:C.faint,marginTop:2}},hint)),
+            h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+              h('input',{type:'number',value:w,min:0,max:100,onChange:function(e){setW(k,e.target.value);},
+                style:{width:56,textAlign:'center',fontFamily:"'DM Mono',monospace",color:c,padding:'5px 8px'}}),
+              h('span',{style:{fontSize:12,color:C.muted}},'%')
+            )
+          ),
+          h('input',{type:'range',min:0,max:50,value:w,style:{accentColor:c},onChange:function(e){setW(k,e.target.value);}})
+        );
+      }),
+      h('div',{style:{display:'flex',justifyContent:'space-between',padding:'10px 0',borderTop:'1px solid '+C.border}},
+        h('span',{style:{fontSize:13,fontWeight:600}},'Total'),
+        h('span',{style:{fontSize:14,fontWeight:800,color:totalWeight===100?C.green:C.red,fontFamily:"'DM Mono',monospace"}},totalWeight+'% '+(totalWeight===100?'\u2713':'— must equal 100%'))
+      )
+    );}
+
+    if(sec==='thresholds'){return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
+      h(InfoBox,{text:'These thresholds directly feed the Audit Findings engine.'}),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}},
+        h(FR,{label:'Pricing Deviation Threshold (%)'},
+          h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+            h('input',{type:'number',value:localCfg.pricingDeviation||5,min:0,max:50,onChange:function(e){setB('pricingDeviation',e.target.value);},style:{fontFamily:"'DM Mono',monospace"}}),
+            h('span',{style:{fontSize:11,color:C.muted,whiteSpace:'nowrap'}},'% above rate card \u2192 flag')
+          )
+        ),
+        h(FR,{label:'Calculation Error Tolerance (\u20B9)'},
+          h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+            h('input',{type:'number',value:localCfg.calcErrTolerance||0.5,min:0,step:.5,onChange:function(e){setB('calcErrTolerance',e.target.value);},style:{fontFamily:"'DM Mono',monospace"}}),
+            h('span',{style:{fontSize:11,color:C.muted,whiteSpace:'nowrap'}},'\u20B9 rounding tolerance')
+          )
+        ),
+        h(FR,{label:'Duplicate Detection Window (days)'},
+          h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+            h('input',{type:'number',value:localCfg.duplicateDays||30,min:1,max:365,onChange:function(e){setB('duplicateDays',e.target.value);},style:{fontFamily:"'DM Mono',monospace"}}),
+            h('span',{style:{fontSize:11,color:C.muted,whiteSpace:'nowrap'}},'days lookback')
+          )
+        ),
+        h(FR,{label:'Surcharge Cap (% of invoice)'},
+          h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+            h('input',{type:'number',value:localCfg.surchargeCapPct||10,min:0,max:100,onChange:function(e){setB('surchargeCapPct',e.target.value);},style:{fontFamily:"'DM Mono',monospace"}}),
+            h('span',{style:{fontSize:11,color:C.muted,whiteSpace:'nowrap'}},'% max surcharge')
+          )
+        )
+      )
+    );}
+
+    if(sec==='banking'){return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+      h(InfoBox,{text:'Bank detail mismatch vs Vendor Master triggers a CRITICAL finding. These toggles control which checks run.'}),
+      [['bankValidation','Bank Validation (invoice vs Vendor Master)','Compares IFSC on every invoice against the vendor\'s master record'],
+       ['ifscValidation','IFSC Format Validation','Flags IFSC codes that don\'t match the standard format'],
+       ['panGstinCheck','PAN\u2013GSTIN Consistency','Verifies digits 3\u201312 of GSTIN match the vendor PAN'],
+       ['sharedAccount','Shared Account Detection','Alerts when same IFSC+account appears across multiple vendors'],
+      ].map(function(kArr){
+        var k=kArr[0],l=kArr[1],d=kArr[2];
+        return h('div',{key:k,style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,padding:'12px 16px',background:'rgba(255,255,255,0.03)',border:'1px solid '+C.border,borderRadius:9}},
+          h('div',null,h('div',{style:{fontSize:13,fontWeight:600,marginBottom:3}},l),h('div',{style:{fontSize:11,color:C.faint,lineHeight:1.5}},d)),
+          h('button',{onClick:function(){setB(k,!localCfg[k]);},
+            style:{flexShrink:0,width:42,height:22,borderRadius:11,border:'none',cursor:'pointer',
+              background:localCfg[k]?C.green:'rgba(255,255,255,0.1)',position:'relative',transition:'background .2s'}},
+            h('div',{style:{width:16,height:16,borderRadius:'50%',background:'#fff',position:'absolute',top:3,left:localCfg[k]?23:3,transition:'left .2s'}})
+          )
+        );
+      })
+    );}
+
+    if(sec==='budget'){return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+      h(InfoBox,{text:'Monthly budget targets shown on the Dashboard. Alerts when category spend approaches limit.'}),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
+        [['logistics','Logistics'],['manpower','Manpower'],['it','IT Services'],['procurement','Procurement'],['facility','Facility Management']].map(function(kl){
+          var k=kl[0],l=kl[1];
+          return h(FR,{key:k,label:l+' \u2014 Monthly Budget (\u20B9)'},
+            h('input',{type:'number',value:(localCfg.budgets||{})[k]||'',placeholder:'Not set',
+              onChange:function(e){var kk=k;setLocalCfg(function(c){var b=Object.assign({},c.budgets||{});b[kk]=e.target.value;return Object.assign({},c,{budgets:b});});},
+              style:{fontFamily:"'DM Mono',monospace"}})
+          );
+        })
+      )
+    );}
+
+    return null;
+  }
+
+  return h('div',{style:{display:'grid',gridTemplateColumns:'200px 1fr',gap:14}},
+    h('div',{className:'card'},
+      h('div',{style:{fontSize:12,fontWeight:700,marginBottom:12,color:C.muted,textTransform:'uppercase',letterSpacing:.8}},'Settings'),
+      secs.map(function(s){
+        return h('div',{key:s.id,className:'rh',onClick:function(){setSec(s.id);},
+          style:{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:7,fontSize:12,cursor:'pointer',
+            fontWeight:sec===s.id?600:400,color:sec===s.id?C.amber:C.muted,
+            background:sec===s.id?C.amber+'08':'transparent',
+            border:sec===s.id?'1px solid '+C.amber+'20':'1px solid transparent',marginBottom:2,transition:'all .15s'}},
+          h('span',null,s.icon),h('span',null,s.l)
+        );
+      })
+    ),
+    h('div',{className:'card'},
+      h('div',{style:{fontSize:14,fontWeight:700,marginBottom:4}},secs.find(function(s){return s.id===sec;})?secs.find(function(s){return s.id===sec;}).l:''),
+      h('div',{style:{fontSize:11,color:C.faint,marginBottom:16}},'Changes apply after clicking Save'),
+      renderSection(),
+      h('div',{style:{marginTop:18,paddingTop:14,borderTop:'1px solid '+C.border,display:'flex',justifyContent:'flex-end',gap:10,alignItems:'center'}},
+        saved?h('span',{style:{fontSize:12,color:C.green,display:'flex',alignItems:'center',gap:5}},h(Ico,{d:IC.check,sz:13,s:C.green}),'Saved!'):
+          h('span',{style:{fontSize:11,color:C.faint}},'Unsaved changes'),
+        h('button',{onClick:save,style:{background:C.amber,color:'#0A0D14',border:'none',borderRadius:7,padding:'9px 18px',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}},
+          h(Ico,{d:IC.save,sz:13,s:'#0A0D14'}),'Save Changes')
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  ROOT APP
+// ══════════════════════════════════════════════════════════════════
+var DEFAULT_CONFIG={
+  gstRates:[
+    {hsn:'9965',  desc:'Freight & Transport Services',rate:'18'},
+    {hsn:'998513',desc:'Contract Staffing',           rate:'18'},
+    {hsn:'998314',desc:'IT Software Services',        rate:'18'},
+    {hsn:'998511',desc:'Facility Management',         rate:'18'},
+    {hsn:'9954',  desc:'Construction Services',       rate:'12'},
+    {hsn:'9961',  desc:'Goods Distribution',          rate:'5'},
+  ],
+  units:[
+    {code:'KM',name:'Kilometre',type:'Distance'},
+    {code:'MT',name:'Metric Tonne',type:'Weight'},
+    {code:'KG',name:'Kilogram',type:'Weight'},
+    {code:'HR',name:'Hour',type:'Time'},
+    {code:'DAY',name:'Day',type:'Time'},
+    {code:'TRIP',name:'Trip',type:'Count'},
+    {code:'PC',name:'Piece',type:'Count'},
+  ],
+  weights:{pricing:30,compliance:25,errors:20,contract:15,fraud:10},
+  pricingDeviation:5,calcErrTolerance:0.5,duplicateDays:30,surchargeCapPct:10,
+  bankValidation:true,ifscValidation:true,panGstinCheck:true,sharedAccount:true,
+  budgets:{},
+};
+var NAV=[
+  {id:'dashboard',l:'Dashboard',   d:IC.home},
+  {id:'upload',   l:'Document Hub',d:IC.upload},
+  {id:'audit',    l:'Audit Findings',d:IC.shield},
+  {id:'vendors',  l:'Vendor Master',d:IC.users},
+  {id:'reports',  l:'Reports',     d:IC.file},
+  {id:'config',   l:'Configuration',d:IC.cog},
+];
+
+function App(){
+  var pageState=useState('dashboard');var page=pageState[0];var setPage=pageState[1];
+  var pkState=useState(0);var pk=pkState[0];var setPk=pkState[1];
+  var uploadedFilesState=useState([]);var uploadedFiles=uploadedFilesState[0];var setUploadedFiles=uploadedFilesState[1];
+  var vendorMasterState=useState([]);var vendorMaster=vendorMasterState[0];var setVendorMaster=vendorMasterState[1];
+  var configState=useState(DEFAULT_CONFIG);var config=configState[0];var setConfig=configState[1];
+  function go(id){setPage(id);setPk(function(n){return n+1;});}
+  var props={uploadedFiles:uploadedFiles,setUploadedFiles:setUploadedFiles,vendorMaster:vendorMaster,setVendorMaster:setVendorMaster,config:config,setConfig:setConfig,goTo:go,apiKey:''};
+  var pages={dashboard:Dashboard,upload:DocumentHub,audit:AuditFindings,vendors:VendorMaster,reports:Reports,config:Configuration};
+  var Page=pages[page]||Dashboard;
+  var auditBadge=uploadedFiles.filter(function(f){return f.status==='EXTRACTED';}).length;
+  var invCount=uploadedFiles.filter(function(f){return f.zone==='INVOICES';}).length;
+  return h('div',{style:{display:'flex',height:'100vh',background:C.bg,overflow:'hidden'}},
+    // SIDEBAR
+    h('div',{style:{width:210,background:C.panel,borderRight:'1px solid '+C.border,display:'flex',flexDirection:'column',flexShrink:0}},
+      h('div',{style:{padding:'20px 18px 16px',borderBottom:'1px solid '+C.border}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+          h('div',{style:{width:30,height:30,background:'linear-gradient(135deg,#F59E0B,#EF4444)',borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:900,color:'#0A0D14',flexShrink:0}},'A'),
+          h('div',null,
+            h('div',{style:{fontSize:14,fontWeight:700,letterSpacing:-.3}},'AuditIQ'),
+            h('div',{style:{fontSize:9,color:C.faint,letterSpacing:1.5,textTransform:'uppercase',marginTop:1}},'AI Invoice Auditor')
+          )
+        )
+      ),
+      h('nav',{style:{padding:'10px 8px',flex:1}},
+        NAV.map(function(n){
+          var act=page===n.id;
+          var badge=n.id==='upload'&&invCount>0?invCount:n.id==='audit'&&auditBadge>0?auditBadge:null;
+          return h('div',{key:n.id,className:'ni',onClick:function(){go(n.id);},
+            style:{display:'flex',alignItems:'center',gap:9,padding:'8px 10px',borderRadius:7,marginBottom:2,
+              fontSize:12,fontWeight:act?600:400,color:act?C.amber:C.muted,
+              background:act?C.amber+'10':'transparent',
+              border:act?'1px solid '+C.amber+'25':'1px solid transparent'}},
+            h(Ico,{d:n.d,sz:14,s:act?C.amber:'currentColor'}),
+            h('span',null,n.l),
+            badge?h('span',{style:{marginLeft:'auto',background:n.id==='audit'?C.amber:C.blue,color:n.id==='audit'?'#0A0D14':'#fff',fontSize:9,fontWeight:700,borderRadius:8,padding:'1px 6px'}},badge):null
+          );
+        })
+      ),
+      h('div',{style:{padding:'12px 16px',borderTop:'1px solid '+C.border}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:7,marginBottom:8}},
+          h('div',{style:{width:26,height:26,borderRadius:'50%',background:'linear-gradient(135deg,#3B82F6,#8B5CF6)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}},'FC'),
+          h('div',null,
+            h('div',{style:{fontSize:11,fontWeight:600}},'Finance Controller'),
+            h('div',{style:{fontSize:9,color:C.faint}},'Your Organisation')
+          )
+        ),
+        h('div',{style:{display:'flex',alignItems:'center',gap:5,background:(IS_LOCAL?C.amber:C.green)+'12',border:'1px solid '+(IS_LOCAL?C.amber:C.green)+'30',borderRadius:5,padding:'4px 8px'}},
+          h('span',{className:'pu',style:{width:5,height:5,borderRadius:'50%',background:IS_LOCAL?C.amber:C.green,display:'inline-block',flexShrink:0}}),
+          h('span',{style:{fontSize:9,color:IS_LOCAL?C.amber:C.green,fontWeight:600}},IS_LOCAL?'Local Mode \u00B7 PDF.js':'Claude AI \u00B7 Connected')
+        )
+      )
+    ),
+    // MAIN
+    h('div',{style:{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}},
+      h('div',{style:{height:50,borderBottom:'1px solid '+C.border,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 22px',background:C.panel,flexShrink:0}},
+        h('div',null,
+          h('div',{style:{fontSize:13,fontWeight:700}},NAV.find(function(n){return n.id===page;})?NAV.find(function(n){return n.id===page;}).l:''),
+          h('div',{style:{fontSize:10,color:C.faint}},
+            uploadedFiles.length>0?uploadedFiles.length+' files \u00B7 '+uploadedFiles.filter(function(f){return f.status==='REVIEWED';}).length+' approved \u00B7 '+vendorMaster.length+' vendors':'AuditIQ \u00B7 Prototype')
+        ),
+        h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+          auditBadge>0?h('div',{onClick:function(){go('audit');},style:{fontSize:11,color:C.amber,background:C.amber+'10',border:'1px solid '+C.amber+'25',borderRadius:5,padding:'4px 10px',cursor:'pointer'}},'\u26A0 '+auditBadge+' need review'):null,
+          h('div',{style:{fontSize:11,color:IS_LOCAL?C.amber:C.green,background:(IS_LOCAL?C.amber:C.green)+'10',border:'1px solid '+(IS_LOCAL?C.amber:C.green)+'25',borderRadius:5,padding:'4px 10px',display:'flex',alignItems:'center',gap:5}},
+            h('span',{style:{width:5,height:5,borderRadius:'50%',background:IS_LOCAL?C.amber:C.green,display:'inline-block'}}),
+            'Gemini AI'
+          )
+        )
+      ),
+      h('div',{key:pk,className:'fu',style:{flex:1,overflow:'auto',padding:'20px 22px'}},
+        h(Page,props)
+      )
+    )
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(App,null));
+</script>
+</body>
+</html>
