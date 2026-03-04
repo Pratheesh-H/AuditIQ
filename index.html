@@ -361,6 +361,24 @@ var PROMPTS_RESOLVED={
   HISTORICAL:'You are an expert document field extractor for an Indian invoice auditing system.\n\nTASK: Extract EVERY field with a visible label and value. Do not limit yourself to a predefined list.\n\nCRITICAL RULES:\n1. Return ONLY a valid JSON array. No markdown, no explanation, no text before or after.\n2. Include ONLY fields that actually exist in the document with a readable value.\n3. NEVER return entries with value \"Not found\" — if a field is absent, omit it entirely.\n4. Confidence: 95-100=clearly printed, 85-94=legible, below 80 only if genuinely blurry. Most fields in a clear document should be 90+.\n5. Use descriptive consistent field names.\n\nIf INVOICE: extract all present fields including — Vendor Name (issuing company, largest/boldest name at top), Vendor GSTIN, Buyer Name, Buyer GSTIN, Invoice Number, Invoice Date, Due Date, PO / Work Order Ref, Billing Period, Place of Supply, Reverse Charge, Description of Services, HSN / SAC Code, Quantity, Unit of Measure, Rate per Unit, Taxable Amount, CGST (format: 9% — Rs.9000.00), SGST (same format), IGST (same format), Invoice Total, Bank Account (mask middle digits), IFSC Code, Bank Name, Account Holder Name, Contact Email, Phone. Also extract any additional fields visible on this invoice.\n\nIf CONTRACT or AGREEMENT: extract all present fields including — Vendor Name (Service Provider), Vendor GSTIN, Client Name, Client GSTIN, Contract ID, Effective Date, Expiry Date, Service Description, HSN / SAC Code, Contracted Rate, Unit of Measure, Currency, Applicable GST Rate %, Payment Terms, TDS Rate, Security Deposit, Penalty Clauses (one-line summary), Renewal Terms. For rate tables extract each row as a separate field: Rate — [Description] = rate+unit.\n\nIf RATE CARD: extract Vendor Name, Vendor GSTIN, Rate Card Reference, Effective From, Effective To, all rate rows as Rate — [Description], Currency, GST %, Special Conditions.\n\nIf VENDOR DOCUMENT: extract Vendor Name, Vendor Code, GSTIN, PAN, Legal Entity Type, Registered Address, State, PIN Code, Bank Account (masked), IFSC Code, Bank Name, Account Type, Account Holder Name, Contact Person, Email, Phone, Service Category, Payment Terms.\n\nReturn ONLY valid JSON array: [{\"field\":\"Vendor Name\",\"value\":\"Rajesh Roadways Pvt Ltd\",\"confidence\":97},...]',
 };
 
+// ── AI ENGINE STATE ──────────────────────────────────────────────
+var _activeAI='gemini';
+function getActiveAI(){return _activeAI;}
+function setActiveAI(v){_activeAI=v;window.dispatchEvent(new CustomEvent('auditiq-ai-change',{detail:v}));}
+
+async function extractWithGroq(textContent,prompt,fileName){
+  var messages=[{role:'user',content:'Filename: '+fileName+'\n\nDocument Content:\n'+textContent.slice(0,15000)+'\n\n'+prompt}];
+  var resp=await fetch('/api/groq',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:GROQ_MODEL,messages:messages,max_tokens:4096,temperature:0.1}),
+  });
+  if(!resp.ok){var et=await resp.text().catch(function(){return '';});throw new Error('Groq '+resp.status+': '+et.slice(0,300));}
+  var data=await resp.json();
+  var raw='';try{raw=data.choices[0].message.content||'';}catch(e){raw='';}
+  return raw;
+}
+
 async function extractDocument(file,zone,apiKey){
   var ext=file.name.split('.').pop().toLowerCase();
   var mime=file.type||'';
@@ -383,16 +401,35 @@ async function extractDocument(file,zone,apiKey){
     geminiParts.push({text:'Filename: '+file.name+'\n\nContents:\n'+txt.slice(0,15000)});
   }
   geminiParts.push({text:prompt});
-  var geminiUrl='https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODEL+':generateContent?key='+GEMINI_KEY;
-  var resp=await fetch(geminiUrl,{
+
+  var raw='';var usedEngine='Gemini';
+  var geminiResp=await fetch('/api/gemini',{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({contents:[{parts:geminiParts}],generationConfig:{temperature:0.1,maxOutputTokens:4096}}),
   });
-  if(!resp.ok){var et=await resp.text().catch(function(){return '';});
-    throw new Error('Gemini '+resp.status+': '+et.slice(0,300));}
-  var data=await resp.json();
-  var raw='';
-  try{raw=data.candidates[0].content.parts[0].text||'';}catch(e){raw='';}
+
+  if(geminiResp.status===429){
+    // Gemini quota exceeded — fall back to Groq
+    setActiveAI('groq');
+    var textForGroq='';
+    if(isPDF){try{textForGroq=await extractPDFText(file);}catch(e){textForGroq='';}}
+    else if(isImg){textForGroq='[Image file — Filename: '+file.name+']';}
+    else{try{textForGroq=await readAsText(file);}catch(e){textForGroq='';}}
+    try{
+      raw=await extractWithGroq(textForGroq,prompt,file.name);
+      usedEngine='Groq llama-3.3-70b (Gemini quota exceeded)';
+    }catch(groqErr){
+      throw new Error('Gemini quota exceeded & Groq fallback failed: '+groqErr.message);
+    }
+  }else if(!geminiResp.ok){
+    var et=await geminiResp.text().catch(function(){return '';});
+    throw new Error('Gemini '+geminiResp.status+': '+et.slice(0,300));
+  }else{
+    setActiveAI('gemini');
+    var geminiData=await geminiResp.json();
+    try{raw=geminiData.candidates[0].content.parts[0].text||'';}catch(e){raw='';}
+  }
+
   raw=raw.trim();
   var js=raw.replace(/^```json\s*/i,'').replace(/^```/,'').replace(/```$/,'').trim();
   var parsed;
@@ -406,7 +443,7 @@ async function extractDocument(file,zone,apiKey){
       throw new Error('No JSON in response: '+raw.slice(0,200));
     }
   }
-  if(!Array.isArray(parsed))throw new Error('Expected array from Gemini');
+  if(!Array.isArray(parsed))throw new Error('Expected array from AI');
   var apiFields=parsed
     .filter(function(it){return it.value&&String(it.value).trim()!==''&&String(it.value).toLowerCase().indexOf('not found')===-1;})
     .map(function(it){return {
@@ -417,8 +454,8 @@ async function extractDocument(file,zone,apiKey){
   var found2=apiFields.length;
   var avg2=found2>0?Math.round(apiFields.reduce(function(s,f){return s+f.conf;},0)/found2):0;
   var lowConf2=apiFields.filter(function(f){return f.conf<75;});
-  var meta2={field:'Engine',value:'Claude Sonnet \u00B7 '+found2+' fields \u00B7 avg '+avg2+'% confidence',conf:100,isMeta:true};
-  return {fields:[meta2].concat(apiFields),needsReview:found2===0||(found2<4&&avg2<75),lowConfCount:lowConf2.length,foundCount:found2};
+  var meta2={field:'Engine',value:usedEngine+' \u00B7 '+found2+' fields \u00B7 avg '+avg2+'% confidence',conf:100,isMeta:true};
+  return {fields:[meta2].concat(apiFields),needsReview:found2===0||(found2<4&&avg2<75),lowConfCount:lowConf2.length,foundCount:found2,engine:usedEngine};
 }
 
 // ── CONF BAR ──────────────────────────────────────────────────────
@@ -2086,6 +2123,12 @@ function App(){
   var uploadedFilesState=useState([]);var uploadedFiles=uploadedFilesState[0];var setUploadedFiles=uploadedFilesState[1];
   var vendorMasterState=useState([]);var vendorMaster=vendorMasterState[0];var setVendorMaster=vendorMasterState[1];
   var configState=useState(DEFAULT_CONFIG);var config=configState[0];var setConfig=configState[1];
+  var aiEngineState=useState('gemini');var aiEngine=aiEngineState[0];var setAiEngine=aiEngineState[1];
+  useEffect(function(){
+    function onAIChange(e){setAiEngine(e.detail);}
+    window.addEventListener('auditiq-ai-change',onAIChange);
+    return function(){window.removeEventListener('auditiq-ai-change',onAIChange);};
+  },[]);
   function go(id){setPage(id);setPk(function(n){return n+1;});}
   var props={uploadedFiles:uploadedFiles,setUploadedFiles:setUploadedFiles,vendorMaster:vendorMaster,setVendorMaster:setVendorMaster,config:config,setConfig:setConfig,goTo:go,apiKey:''};
   var pages={dashboard:Dashboard,upload:DocumentHub,audit:AuditFindings,vendors:VendorMaster,reports:Reports,config:Configuration};
@@ -2143,9 +2186,9 @@ function App(){
         ),
         h('div',{style:{display:'flex',alignItems:'center',gap:8}},
           auditBadge>0?h('div',{onClick:function(){go('audit');},style:{fontSize:11,color:C.amber,background:C.amber+'10',border:'1px solid '+C.amber+'25',borderRadius:5,padding:'4px 10px',cursor:'pointer'}},'\u26A0 '+auditBadge+' need review'):null,
-          h('div',{style:{fontSize:11,color:IS_LOCAL?C.amber:C.green,background:(IS_LOCAL?C.amber:C.green)+'10',border:'1px solid '+(IS_LOCAL?C.amber:C.green)+'25',borderRadius:5,padding:'4px 10px',display:'flex',alignItems:'center',gap:5}},
-            h('span',{style:{width:5,height:5,borderRadius:'50%',background:IS_LOCAL?C.amber:C.green,display:'inline-block'}}),
-            'Gemini AI'
+          h('div',{style:{fontSize:11,color:IS_LOCAL?C.amber:(aiEngine==='groq'?C.purple:C.green),background:(IS_LOCAL?C.amber:(aiEngine==='groq'?C.purple:C.green))+'10',border:'1px solid '+(IS_LOCAL?C.amber:(aiEngine==='groq'?C.purple:C.green))+'25',borderRadius:5,padding:'4px 10px',display:'flex',alignItems:'center',gap:5}},
+            h('span',{style:{width:5,height:5,borderRadius:'50%',background:IS_LOCAL?C.amber:(aiEngine==='groq'?C.purple:C.green),display:'inline-block'}}),
+            IS_LOCAL?'Local Mode':aiEngine==='groq'?'Groq (Fallback)':'Gemini AI'
           )
         )
       ),
