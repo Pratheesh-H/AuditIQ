@@ -368,7 +368,7 @@ async function extractWithGroq(textContent,prompt,fileName){
   var resp=await fetch('/api/groq',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:GROQ_MODEL,messages:messages,max_tokens:4096,temperature:0.1}),
+    body:JSON.stringify({model:GROQ_MODEL,messages:messages,max_tokens:2048,temperature:0.1}),
   });
   if(!resp.ok){var et=await resp.text().catch(function(){return '';});throw new Error('Groq '+resp.status+': '+et.slice(0,300));}
   var data=await resp.json();
@@ -376,7 +376,16 @@ async function extractWithGroq(textContent,prompt,fileName){
   return raw;
 }
 
+// In-memory extraction cache — keyed by filename+size+zone
+// Prevents duplicate API calls when same file is processed twice
+var _extractCache={};
+
 async function extractDocument(file,zone,apiKey){
+  var cacheKey=file.name+'|'+file.size+'|'+zone;
+  if(_extractCache[cacheKey]){
+    console.log('[AuditIQ] Cache hit for',file.name,'— skipping API call');
+    return _extractCache[cacheKey];
+  }
   var ext=file.name.split('.').pop().toLowerCase();
   var mime=file.type||'';
   var isPDF=mime==='application/pdf'||ext==='pdf';
@@ -402,7 +411,7 @@ async function extractDocument(file,zone,apiKey){
   var raw='';var usedEngine='Gemini';
   var geminiResp=await fetch('/api/gemini',{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:geminiParts}],generationConfig:{temperature:0.1,maxOutputTokens:4096}}),
+    body:JSON.stringify({contents:[{parts:geminiParts}],generationConfig:{temperature:0.1,maxOutputTokens:2048}}),
   });
 
   if(geminiResp.status===429){
@@ -452,7 +461,9 @@ async function extractDocument(file,zone,apiKey){
   var avg2=found2>0?Math.round(apiFields.reduce(function(s,f){return s+f.conf;},0)/found2):0;
   var lowConf2=apiFields.filter(function(f){return f.conf<75;});
   var meta2={field:'Engine',value:usedEngine+' \u00B7 '+found2+' fields \u00B7 avg '+avg2+'% confidence',conf:100,isMeta:true};
-  return {fields:[meta2].concat(apiFields),needsReview:found2===0||(found2<4&&avg2<75),lowConfCount:lowConf2.length,foundCount:found2,engine:usedEngine};
+  var _res={fields:[meta2].concat(apiFields),needsReview:found2===0||(found2<4&&avg2<75),lowConfCount:lowConf2.length,foundCount:found2,engine:usedEngine};
+  _extractCache[cacheKey]=_res;
+  return _res;
 }
 
 // ── CONF BAR ──────────────────────────────────────────────────────
@@ -568,10 +579,17 @@ function DocumentHub(props){
         uploaded:new Date().toLocaleTimeString(),extraction:null,_ref:f};
     });
     setUploadedFiles(function(p){return nfs.concat(p);});
-    nfs.forEach(async function(nf){
-      await new Promise(function(r){setTimeout(r,300);});
-      setUploadedFiles(function(p){return p.map(function(f){return f.id===nf.id?Object.assign({},f,{status:'EXTRACTING'}):f;});});
+    // Sequential upload — one at a time with delay to avoid Gemini 429s
+    (async function(){
+    for(var _i=0;_i<nfs.length;_i++){var nf=nfs[_i];
+      if(_i>0)await new Promise(function(r){setTimeout(r,4000);}); // 4s gap between files
+      var _qpos=_i+1;var _qtotal=nfs.length;
+      setUploadedFiles(function(p){var _id=nf.id;return p.map(function(f){return f.id===_id?Object.assign({},f,{status:'EXTRACTING',queuePos:_qpos,queueTotal:_qtotal}):f;});});
       try{
+        // Skip API if already extracted (cache hit)
+        var _existing=null;
+        setUploadedFiles(function(p){var _f=p.find(function(f){return f.id===nf.id;});if(_f&&_f.extraction)_existing=_f.extraction;return p;});
+        if(_existing){setUploadedFiles(function(p){var _id2=nf.id;return p.map(function(f){return f.id===_id2?Object.assign({},f,{status:f.status==='EXTRACTING'?'EXTRACTED':f.status,extraction:_existing}):f;});});continue;}
         var ex=await extractDocument(nf._ref,zone,apiKey);
         setUploadedFiles(function(p){
           return p.map(function(f){
@@ -586,7 +604,7 @@ function DocumentHub(props){
           });
         });
       }
-    });
+    }})();
   }
 
   useEffect(function(){
@@ -757,6 +775,18 @@ function DocumentHub(props){
   );
 }
 
+// ── Global helpers (used by Dashboard, AuditFindings, Reports) ──
+function extractTaxAmt(v){
+  // Extracts the tax AMOUNT from fields like "9% — Rs.4867200.00"
+  // Picks the largest number >= 100 (ignores the rate %)
+  if(!v)return 0;
+  var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);
+  if(!tokens||!tokens.length)return 0;
+  var best=0;
+  tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
+  return best>=100?best:0;
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  AUDIT FINDINGS
 // ══════════════════════════════════════════════════════════════════
@@ -780,7 +810,7 @@ async function runGroqOversight(invoices,contracts,rateCards,vmData,ruleFindings
   var resp=await fetch('/api/groq',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'user',content:prompt}],max_tokens:4096,temperature:0.1})});
+    body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'user',content:prompt}],max_tokens:2048,temperature:0.1})});
   if(!resp.ok){var et=await resp.text().catch(function(){return'';});throw new Error('Groq '+resp.status+': '+et.slice(0,200));}
   var data=await resp.json();
   var raw='';try{raw=data.choices[0].message.content||'';}catch(e){raw='';}
@@ -844,16 +874,6 @@ function AuditFindings(props){
 
   // Helper: extract tax amount from a field like "9% — Rs.4867200.00" or "18% Rs.825840"
   // Returns the AMOUNT (largest number), not the rate (small number like 9 or 18)
-  function extractTaxAmt(v){
-    if(!v)return 0;
-    var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);
-    if(!tokens||!tokens.length)return 0;
-    var best=0;
-    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
-    // Sanity: if best looks like a percentage (< 100), it's likely only a rate was found
-    // In that case return 0 (amount not parseable)
-    return best>=100?best:0;
-  }
   var findings=[];
   var approved=uploadedFiles.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
 
@@ -1409,14 +1429,6 @@ function Reports(props){
     var best=0;
     tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
     return best;
-  }
-  function extractTaxAmt(v){
-    if(!v)return 0;
-    var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);
-    if(!tokens||!tokens.length)return 0;
-    var best=0;
-    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
-    return best>=100?best:0;
   }
     var rptFindings=[];
     filtered.forEach(function(f){
