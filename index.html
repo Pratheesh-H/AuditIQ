@@ -800,20 +800,55 @@ function AuditFindings(props){
   var aiDS=useState(false);var aiDone=aiDS[0];var setAiDone=aiDS[1];
 
   function getField(extraction,name){
-    if(!extraction)return null;
+    if(!extraction||!extraction.fields)return null;
+    var nl=name.toLowerCase().trim();
+    // 1. exact match
     var f=extraction.fields.find(function(x){return x.field===name&&x.conf>0;});
+    if(f)return f.value;
+    // 2. case-insensitive match
+    f=extraction.fields.find(function(x){return x.field.toLowerCase().trim()===nl&&x.conf>0;});
+    if(f)return f.value;
+    // 3. fuzzy: field contains the key words (handles "Invoice Total Amount" vs "Invoice Total")
+    var words=nl.split(/\s+/);
+    f=extraction.fields.find(function(x){
+      var xl=x.field.toLowerCase();
+      return x.conf>0&&words.every(function(w){return xl.indexOf(w)!==-1;});
+    });
     return f?f.value:null;
   }
   function parseAmt(v){
     if(!v)return null;
-    var n=parseFloat(v.replace(/[^\d.]/g,''));
-    return isNaN(n)?null:n;
+    // Strip currency symbols/labels, find last standalone number
+    // Handles: "Rs.54080000.00", "9% — Rs.4867200.00", "₹54,08,000.00", "1,17,64,600.00"
+    var s=String(v).trim();
+    // Find all number-like tokens (digits + optional commas + optional decimal)
+    var tokens=s.match(/\d[\d,]*(?:\.\d+)?/g);
+    if(!tokens||!tokens.length)return null;
+    // Pick the LARGEST token (the amount, not the rate/percentage)
+    var best=0;
+    tokens.forEach(function(t){
+      var n=parseFloat(t.replace(/,/g,''));
+      if(!isNaN(n)&&n>best)best=n;
+    });
+    return best>0?best:null;
   }
   function fmtAmt(n){
     if(!n||n<=0)return null;
     return '\u20B9'+n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
   }
 
+  // Helper: extract tax amount from a field like "9% — Rs.4867200.00" or "18% Rs.825840"
+  // Returns the AMOUNT (largest number), not the rate (small number like 9 or 18)
+  function extractTaxAmt(v){
+    if(!v)return 0;
+    var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);
+    if(!tokens||!tokens.length)return 0;
+    var best=0;
+    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
+    // Sanity: if best looks like a percentage (< 100), it's likely only a rate was found
+    // In that case return 0 (amount not parseable)
+    return best>=100?best:0;
+  }
   var findings=[];
   var approved=uploadedFiles.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
 
@@ -839,9 +874,10 @@ function AuditFindings(props){
     if(totalAmt&&taxable){
       var taxTotal=0;
       var cgstAmt=0,sgstAmt=0,igstAmt=0;
-      if(cgst){var mc=cgst.match(/[\d,]+(?:\.\d+)?/g);if(mc&&mc[1]){cgstAmt=parseFloat(mc[1].replace(/,/g,''))||0;taxTotal+=cgstAmt;}}
-      if(sgst){var ms=sgst.match(/[\d,]+(?:\.\d+)?/g);if(ms&&ms[1]){sgstAmt=parseFloat(ms[1].replace(/,/g,''))||0;taxTotal+=sgstAmt;}}
-      if(igst){var mi=igst.match(/[\d,]+(?:\.\d+)?/g);if(mi&&mi[1]){igstAmt=parseFloat(mi[1].replace(/,/g,''))||0;taxTotal+=igstAmt;}}
+      // Extract tax amounts: parseAmt picks largest number in field (the amount, not the %)
+      if(cgst){cgstAmt=extractTaxAmt(cgst);taxTotal+=cgstAmt;}
+      if(sgst){sgstAmt=extractTaxAmt(sgst);taxTotal+=sgstAmt;}
+      if(igst){igstAmt=extractTaxAmt(igst);taxTotal+=igstAmt;}
       if(taxTotal>0){
         var expected=taxable+taxTotal;
         var diff=totalAmt-expected;
@@ -935,9 +971,9 @@ function AuditFindings(props){
     // ── CHECK 6: Mystery Surcharge ───────────────────────────────
     if(totalAmt&&taxable){
       var taxT2=0;
-      if(cgst){var mc2=cgst.match(/[\d,]+(?:\.\d+)?/g);if(mc2&&mc2[1])taxT2+=parseFloat(mc2[1].replace(/,/g,''))||0;}
-      if(sgst){var ms2=sgst.match(/[\d,]+(?:\.\d+)?/g);if(ms2&&ms2[1])taxT2+=parseFloat(ms2[1].replace(/,/g,''))||0;}
-      if(igst){var mi2=igst.match(/[\d,]+(?:\.\d+)?/g);if(mi2&&mi2[1])taxT2+=parseFloat(mi2[1].replace(/,/g,''))||0;}
+      if(cgst)taxT2+=extractTaxAmt(cgst);
+      if(sgst)taxT2+=extractTaxAmt(sgst);
+      if(igst)taxT2+=extractTaxAmt(igst);
       var rateAmt=rateVal&&qtyVal?rateVal*qtyVal:0;
       if(rateAmt>0&&taxable>0){
         var unexplained=taxable-rateAmt;
@@ -1312,8 +1348,26 @@ function Reports(props){
   var errState=useState('');var err=errState[0];var setErr=errState[1];
 
   var approved=uploadedFiles.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
-  function getField(ex,name){var f=ex.fields.find(function(x){return x.field===name&&x.conf>0;});return f?f.value:null;}
-  function parseAmt(v){if(!v)return 0;var n=parseFloat(v.replace(/[^\d.]/g,''));return isNaN(n)?0:n;}
+  function getField(ex,name){
+    if(!ex||!ex.fields)return null;
+    var nl=name.toLowerCase().trim();
+    var f=ex.fields.find(function(x){return x.field===name&&x.conf>0;});
+    if(f)return f.value;
+    f=ex.fields.find(function(x){return x.field.toLowerCase().trim()===nl&&x.conf>0;});
+    if(f)return f.value;
+    var words=nl.split(/\s+/);
+    f=ex.fields.find(function(x){var xl=x.field.toLowerCase();return x.conf>0&&words.every(function(w){return xl.indexOf(w)!==-1;});});
+    return f?f.value:null;
+  }
+  function parseAmt(v){
+    if(!v)return 0;
+    var s=String(v).trim();
+    var tokens=s.match(/\d[\d,]*(?:\.\d+)?/g);
+    if(!tokens||!tokens.length)return 0;
+    var best=0;
+    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
+    return best;
+  }
 
   var vendorNames=Array.from(new Set(approved.map(function(f){return getField(f.extraction,'Vendor Name');}).filter(Boolean).concat(vendorMaster.map(function(v){return v.name;})))).sort();
   var filtered=approved.filter(function(f){
@@ -1343,7 +1397,22 @@ function Reports(props){
   function downloadPDF(){
     // ── Compute findings scoped to filtered invoices ──────────
     function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
-    function pAmt(v){if(!v)return 0;var n=parseFloat(v.replace(/[^\d.]/g,''));return isNaN(n)?0:n;}
+    function pAmt(v){
+    if(!v)return 0;
+    var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);
+    if(!tokens||!tokens.length)return 0;
+    var best=0;
+    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
+    return best;
+  }
+  function extractTaxAmt(v){
+    if(!v)return 0;
+    var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);
+    if(!tokens||!tokens.length)return 0;
+    var best=0;
+    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
+    return best>=100?best:0;
+  }
     var rptFindings=[];
     filtered.forEach(function(f){
       var ex=f.extraction;
@@ -1362,9 +1431,9 @@ function Reports(props){
       // Calc error
       if(totalAmt&&taxable){
         var taxTotal=0;
-        if(cgst){var mc=cgst.match(/[\d,]+(?:\.\d+)?/g);if(mc&&mc[1])taxTotal+=parseFloat(mc[1].replace(/,/g,''))||0;}
-        if(sgst){var ms=sgst.match(/[\d,]+(?:\.\d+)?/g);if(ms&&ms[1])taxTotal+=parseFloat(ms[1].replace(/,/g,''))||0;}
-        if(igst){var mi=igst.match(/[\d,]+(?:\.\d+)?/g);if(mi&&mi[1])taxTotal+=parseFloat(mi[1].replace(/,/g,''))||0;}
+        if(cgst)taxTotal+=extractTaxAmt(cgst);
+        if(sgst)taxTotal+=extractTaxAmt(sgst);
+        if(igst)taxTotal+=extractTaxAmt(igst);
         if(taxTotal>0){
           var diff=totalAmt-(taxable+taxTotal);
           if(Math.abs(diff)>((parseFloat(config.calcErrTolerance)||0.5)))
@@ -1643,8 +1712,26 @@ function Reports(props){
 // ══════════════════════════════════════════════════════════════════
 function Dashboard(props){
   var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster,config=props.config,goTo=props.goTo;
-  function getField(ex,name){var f=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return f?f.value:null;}
-  function parseAmt(v){if(!v)return 0;var n=parseFloat(v.replace(/[^\d.]/g,''));return isNaN(n)?0:n;}
+  function getField(ex,name){
+    if(!ex||!ex.fields)return null;
+    var nl=name.toLowerCase().trim();
+    var f=ex.fields.find(function(x){return x.field===name&&x.conf>0;});
+    if(f)return f.value;
+    f=ex.fields.find(function(x){return x.field.toLowerCase().trim()===nl&&x.conf>0;});
+    if(f)return f.value;
+    var words=nl.split(/\s+/);
+    f=ex.fields.find(function(x){var xl=x.field.toLowerCase();return x.conf>0&&words.every(function(w){return xl.indexOf(w)!==-1;});});
+    return f?f.value:null;
+  }
+  function parseAmt(v){
+    if(!v)return 0;
+    var s=String(v).trim();
+    var tokens=s.match(/\d[\d,]*(?:\.\d+)?/g);
+    if(!tokens||!tokens.length)return 0;
+    var best=0;
+    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
+    return best;
+  }
   function fmt(n){return n>=10000000?'\u20B9'+(n/10000000).toFixed(2)+'Cr':n>=100000?'\u20B9'+(n/100000).toFixed(2)+'L':'\u20B9'+n.toLocaleString('en-IN',{minimumFractionDigits:2});}
 
   var inv=uploadedFiles.filter(function(f){return f.zone==='INVOICES';});
@@ -1673,9 +1760,9 @@ function Dashboard(props){
     // Calc error
     if(totalAmt&&taxable){
       var taxTotal=0;
-      if(cgst){var mc=cgst.match(/[\d,]+(?:\.\d+)?/g);if(mc&&mc[1])taxTotal+=parseFloat(mc[1].replace(/,/g,''))||0;}
-      if(sgst){var ms=sgst.match(/[\d,]+(?:\.\d+)?/g);if(ms&&ms[1])taxTotal+=parseFloat(ms[1].replace(/,/g,''))||0;}
-      if(igst){var mi=igst.match(/[\d,]+(?:\.\d+)?/g);if(mi&&mi[1])taxTotal+=parseFloat(mi[1].replace(/,/g,''))||0;}
+      if(cgst)taxTotal+=extractTaxAmt(cgst);
+      if(sgst)taxTotal+=extractTaxAmt(sgst);
+      if(igst)taxTotal+=extractTaxAmt(igst);
       if(taxTotal>0){
         var diff=totalAmt-(taxable+taxTotal);
         if(Math.abs(diff)>((parseFloat(config.calcErrTolerance)||0.5)))
