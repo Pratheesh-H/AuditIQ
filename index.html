@@ -84,9 +84,7 @@ function makeTheme(dark){
 var _darkMode=true;
 var C=makeTheme(_darkMode);
 const IS_LOCAL=false;
-const GEMINI_KEY='AIzaSyDfNnIKEdje4zLVTlEn0zFKEtQBRD0F6lc';
 const GEMINI_MODEL='gemini-2.0-flash';
-const GROQ_KEY='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';
 const GROQ_MODEL='llama-3.3-70b-versatile';
 
 // ── ICONS ─────────────────────────────────────────────────────────
@@ -423,7 +421,6 @@ var _extractCache={};
 async function extractDocument(file,zone,apiKey){
   var cacheKey=file.name+'|'+file.size+'|'+zone;
   if(_extractCache[cacheKey]){
-    console.log('[AuditIQ] Cache hit for',file.name,'— skipping API call');
     return _extractCache[cacheKey];
   }
   var ext=file.name.split('.').pop().toLowerCase();
@@ -958,151 +955,11 @@ function AuditFindings(props){
     return '\u20B9'+n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
   }
 
-  // Helper: extract tax amount from a field like "9% — Rs.4867200.00" or "18% Rs.825840"
-  // Returns the AMOUNT (largest number), not the rate (small number like 9 or 18)
+  // ── AI-POWERED AUDIT — replaces all rule-based checks ────────
   var findings=[];
   var approved=uploadedFiles.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
 
-  approved.forEach(function(f){
-    var ex=f.extraction;
-    var vendorName=getField(ex,'Vendor Name');
-    var invoiceNo=getField(ex,'Invoice Number');
-    var invoiceTotal=getField(ex,'Invoice Total');
-    var taxableAmt=getField(ex,'Taxable Amount');
-    var cgst=getField(ex,'CGST');
-    var sgst=getField(ex,'SGST');
-    var igst=getField(ex,'IGST');
-    var gstin=getField(ex,'Vendor GSTIN');
-    var ifsc=getField(ex,'IFSC Code');
-    var hsnField=getField(ex,'HSN / SAC Code');
-    var rateField=getField(ex,'Rate per Unit');
-    var qtyField=getField(ex,'Quantity');
-    var ref=(invoiceNo||f.name)+' \u00B7 '+(vendorName||'Unknown');
-
-    // ── CHECK 1: GST Calculation Error ──────────────────────────
-    var totalAmt=parseAmt(invoiceTotal);
-    var taxable=parseAmt(taxableAmt);
-    if(totalAmt&&taxable){
-      var taxTotal=0;
-      var cgstAmt=0,sgstAmt=0,igstAmt=0;
-      // Extract tax amounts: parseAmt picks largest number in field (the amount, not the %)
-      if(cgst){cgstAmt=extractTaxAmt(cgst);taxTotal+=cgstAmt;}
-      if(sgst){sgstAmt=extractTaxAmt(sgst);taxTotal+=sgstAmt;}
-      if(igst){igstAmt=extractTaxAmt(igst);taxTotal+=igstAmt;}
-      if(taxTotal>0){
-        var expected=taxable+taxTotal;
-        var diff=totalAmt-expected;
-        var tol=parseFloat(config.calcErrTolerance)||0.5;
-        if(Math.abs(diff)>tol){
-          var overAmt=diff>0?diff:0;
-          findings.push({id:f.id+'-gst',type:'CALC_ERROR',severity:'HIGH',
-            vendorName:vendorName||'Unknown',overchargeAmt:overAmt,
-            title:'GST Calculation Mismatch',
-            desc:'Invoice total \u20B9'+totalAmt.toLocaleString('en-IN')+' \u2260 taxable \u20B9'+taxable.toLocaleString('en-IN')+' + taxes \u20B9'+taxTotal.toLocaleString('en-IN')+'. Difference: \u20B9'+Math.abs(diff).toFixed(2)+'.',
-            action:'Hold payment. Request a corrected invoice from the vendor showing proper breakup.',
-            ref:ref,file:f.name});
-        }
-      }
-    }
-
-    // ── CHECK 2: HSN Code vs Expected GST Rate ───────────────────
-    if(hsnField&&(cgst||igst)){
-      var hsnCode=hsnField.replace(/[^0-9]/g,'');
-      var matchedRate=(config.gstRates||[]).find(function(r){return hsnCode.startsWith(r.hsn.replace(/[^0-9]/g,''));});
-      if(matchedRate){
-        var expectedRate=parseFloat(matchedRate.rate)||0;
-        var actualRate=0;
-        if(cgst){var mcr=cgst.match(/^([\d.]+)%/);if(mcr)actualRate=parseFloat(mcr[1])*2;}
-        if(igst&&!actualRate){var mir=igst.match(/^([\d.]+)%/);if(mir)actualRate=parseFloat(mir[1]);}
-        if(actualRate>0&&Math.abs(actualRate-expectedRate)>0.5){
-          var taxableN=parseAmt(taxableAmt)||0;
-          var overRate=taxableN*(actualRate-expectedRate)/100;
-          findings.push({id:f.id+'-hsnrate',type:'GST_RATE',severity:'HIGH',
-            vendorName:vendorName||'Unknown',overchargeAmt:overRate>0?overRate:0,
-            title:'Wrong GST Rate for HSN '+hsnField,
-            desc:'HSN '+hsnField+' ('+matchedRate.desc+') should attract '+expectedRate+'% GST but invoice shows '+actualRate+'%. Taxable value: \u20B9'+(taxableN).toLocaleString('en-IN')+'.',
-            action:'Reject invoice. Request corrected invoice with '+expectedRate+'% GST rate. File GSTR-2B reconciliation note.',
-            ref:ref,file:f.name});
-        }
-      }
-    }
-
-    // ── CHECK 3: GSTIN Format ────────────────────────────────────
-    if(gstin&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin)){
-      findings.push({id:f.id+'-gstin',type:'COMPLIANCE',severity:'HIGH',
-        vendorName:vendorName||'Unknown',overchargeAmt:0,
-        title:'Invalid GSTIN Format',
-        desc:'Vendor GSTIN "'+gstin+'" does not match the 15-character GST format. ITC claim worth \u20B9'+(parseAmt(invoiceTotal)||0).toLocaleString('en-IN')+' is at risk.',
-        action:'Block ITC claim until vendor provides correct GSTIN. Contact vendor compliance team.',
-        ref:ref,file:f.name});
-    }
-
-    // ── CHECK 4: Bank Detail vs Vendor Master ────────────────────
-    if(vendorName&&ifsc&&config.bankValidation){
-      var vmv=vendorMaster.find(function(v){
-        return (v.name&&v.name.toLowerCase()===vendorName.toLowerCase())||(v.gstin&&v.gstin===gstin);
-      });
-      if(vmv&&vmv.ifsc&&vmv.ifsc!==ifsc){
-        findings.push({id:f.id+'-bank',type:'FRAUD',severity:'CRITICAL',
-          vendorName:vendorName||'Unknown',overchargeAmt:parseAmt(invoiceTotal)||0,
-          title:'Bank Detail Mismatch \u2014 Suspected Fraud',
-          desc:'Invoice IFSC "'+ifsc+'" does not match Vendor Master IFSC "'+vmv.ifsc+'" for '+vendorName+'. Full invoice value \u20B9'+(parseAmt(invoiceTotal)||0).toLocaleString('en-IN')+' at risk.',
-          action:'FREEZE payment immediately. Contact vendor via verified phone/email (not details on this invoice). Escalate to finance head and initiate fraud review.',
-          ref:ref,file:f.name});
-      }
-    }
-
-    // ── CHECK 5: Rate vs Rate Card / Contract ────────────────────
-    var rateVal=parseAmt(rateField);
-    var qtyVal=parseAmt(qtyField);
-    if(rateVal&&vendorName){
-      var rcFiles=uploadedFiles.filter(function(f2){
-        return (f2.zone==='RATE_CARDS'||f2.zone==='CONTRACTS')&&f2.status==='REVIEWED'&&f2.extraction;
-      });
-      rcFiles.forEach(function(rcf){
-        var rcVendor=getField(rcf.extraction,'Vendor Name')||getField(rcf.extraction,'Vendor');
-        var rcRate=parseAmt(getField(rcf.extraction,'Rate per Unit')||getField(rcf.extraction,'Contracted Rate'));
-        if(rcVendor&&rcVendor.toLowerCase()===vendorName.toLowerCase()&&rcRate){
-          var devPct=((rateVal-rcRate)/rcRate)*100;
-          var thresh=parseFloat(config.pricingDeviation)||5;
-          if(devPct>thresh){
-            var overPerUnit=rateVal-rcRate;
-            var overTotal=qtyVal?overPerUnit*qtyVal:0;
-            findings.push({id:f.id+'-rate-'+rcf.id,type:'PRICING',severity:'MEDIUM',
-              vendorName:vendorName||'Unknown',overchargeAmt:overTotal,
-              title:'Rate Overbilling: +'+devPct.toFixed(1)+'% above '+(rcf.zone==='CONTRACTS'?'contract':'rate card'),
-              desc:'Invoiced \u20B9'+rateVal+'/unit vs agreed \u20B9'+rcRate+'/unit for '+vendorName+'. Deviation: +'+devPct.toFixed(1)+'%'+(overTotal?'. Estimated overcharge: \u20B9'+overTotal.toLocaleString('en-IN',{minimumFractionDigits:2}):'')+'.',
-              action:'Request credit note for \u20B9'+(overTotal||overPerUnit).toLocaleString('en-IN',{minimumFractionDigits:2})+'. Renegotiate if this is a pattern across multiple invoices.',
-              ref:ref,file:f.name});
-          }
-        }
-      });
-    }
-
-    // ── CHECK 6: Mystery Surcharge ───────────────────────────────
-    if(totalAmt&&taxable){
-      var taxT2=0;
-      if(cgst)taxT2+=extractTaxAmt(cgst);
-      if(sgst)taxT2+=extractTaxAmt(sgst);
-      if(igst)taxT2+=extractTaxAmt(igst);
-      var rateAmt=rateVal&&qtyVal?rateVal*qtyVal:0;
-      if(rateAmt>0&&taxable>0){
-        var unexplained=taxable-rateAmt;
-        var surchargeCapPct=parseFloat(config.surchargeCapPct)||10;
-        var surchargeCap=rateAmt*(surchargeCapPct/100);
-        if(unexplained>surchargeCap&&unexplained>100){
-          findings.push({id:f.id+'-surcharge',type:'SURCHARGE',severity:'MEDIUM',
-            vendorName:vendorName||'Unknown',overchargeAmt:unexplained-surchargeCap,
-            title:'Mystery Surcharge Detected',
-            desc:'Taxable value \u20B9'+taxable.toLocaleString('en-IN')+' exceeds rate \xD7 qty \u20B9'+rateAmt.toLocaleString('en-IN')+' by \u20B9'+unexplained.toLocaleString('en-IN')+'. Allowed surcharge cap: '+surchargeCapPct+'% (\u20B9'+surchargeCap.toFixed(2)+').',
-            action:'Request itemised breakup of all surcharges. Reject amounts not covered by contract. Issue debit note for \u20B9'+(unexplained-surchargeCap).toFixed(2)+'.',
-            ref:ref,file:f.name});
-        }
-      }
-    }
-  });
-
-  // ── CHECK 7: Duplicate Invoice Numbers ───────────────────────
+  // Only keep duplicate check — purely factual, no math needed
   var invNos={};
   approved.forEach(function(f){
     var n=getField(f.extraction,'Invoice Number');
@@ -1116,21 +973,107 @@ function AuditFindings(props){
         vendorName:getField(invNos[n][0].extraction,'Vendor Name')||'Unknown',
         overchargeAmt:dupAmt-singleAmt,
         title:'Duplicate Invoice Number: '+n,
-        desc:'Invoice number "'+n+'" appears '+invNos[n].length+' times across: '+invNos[n].map(function(f){return f.name;}).join(', ')+'. Risk of double payment: \u20B9'+(dupAmt-singleAmt).toLocaleString('en-IN')+'.',
-        action:'Block all payments on duplicate copies. Verify with vendor which is the original. Mark duplicates as rejected.',
+        desc:'Invoice "'+n+'" appears '+invNos[n].length+' times across: '+invNos[n].map(function(f){return f.name;}).join(', ')+'. Double payment risk: \u20B9'+(dupAmt-singleAmt).toLocaleString('en-IN')+'.',
+        action:'Block all duplicate copies. Verify with vendor which is original.',
         ref:n,file:invNos[n][0].name});
     }
   });
 
   var allFindings=findings.concat(aiExtras);
+
+  // ── AI Audit via Groq ──────────────────────────────────────────
   async function handleRunAI(){
     setAiRunningV(true);setAiErrV('');setAiDoneV(false);
     try{
       var con=uploadedFiles.filter(function(f){return f.zone==='CONTRACTS'&&f.status==='REVIEWED'&&f.extraction;});
       var rc=uploadedFiles.filter(function(f){return f.zone==='RATE_CARDS'&&f.status==='REVIEWED'&&f.extraction;});
-      var res=await runGroqOversight(approved,con,rc,vendorMaster,findings);
-      setAiRes(res);setAiDoneV(true);
-    }catch(e){setAiErrV(e.message||'AI Oversight failed');}
+
+      // Build compact invoice data for Groq
+      var invoiceData=approved.map(function(f){
+        var fields={};
+        (f.extraction.fields||[]).filter(function(x){return !x.isMeta&&x.conf>0;}).forEach(function(x){fields[x.field]=x.value;});
+        return {file:f.name,fields:fields};
+      });
+      var contractData=con.map(function(f){
+        var fields={};
+        (f.extraction.fields||[]).filter(function(x){return !x.isMeta&&x.conf>0;}).forEach(function(x){fields[x.field]=x.value;});
+        return {file:f.name,fields:fields};
+      });
+      var rateData=rc.map(function(f){
+        var fields={};
+        (f.extraction.fields||[]).filter(function(x){return !x.isMeta&&x.conf>0;}).forEach(function(x){fields[x.field]=x.value;});
+        return {file:f.name,fields:fields};
+      });
+      var vmData=vendorMaster.map(function(v){return {name:v.name,gstin:v.gstin,ifsc:v.ifsc};});
+
+      var prompt='You are a senior Indian GST and procurement auditor. Analyse the following invoice data carefully and return ONLY a valid JSON object — no markdown, no explanation.\n\n'
+        +'INVOICES:\n'+JSON.stringify(invoiceData,null,1)+'\n\n'
+        +(contractData.length?'CONTRACTS/RATE CARDS:\n'+JSON.stringify(contractData.concat(rateData),null,1)+'\n\n':'')
+        +(vmData.length?'VENDOR MASTER:\n'+JSON.stringify(vmData,null,1)+'\n\n':'')
+        +'AUDIT RULES TO CHECK:\n'
+        +'1. GST CALCULATION: Verify Invoice Total = Taxable Amount + CGST amount + SGST amount + IGST amount (within Rs.1 tolerance). Parse amounts carefully — fields like "9% — Rs.40500.00" mean the tax amount is Rs.40500.\n'
+        +'2. GSTIN FORMAT: Must match pattern: 2 digits + 5 uppercase letters + 4 digits + 1 letter + 1 alphanumeric + Z + 1 alphanumeric.\n'
+        +'3. BANK MISMATCH: If vendor IFSC in invoice differs from vendor master IFSC for the same vendor — flag as CRITICAL fraud risk.\n'
+        +'4. RATE OVERBILLING: If invoice rate per unit exceeds contracted rate or rate card rate for the same vendor by more than 5%.\n'
+        +'5. DUPLICATE INVOICE: Same invoice number appearing on multiple files.\n'
+        +'6. MISSING CRITICAL FIELDS: Flag if Invoice Total, Vendor Name, or Vendor GSTIN is missing.\n'
+        +'7. ANY OTHER ANOMALY you notice as an experienced auditor.\n\n'
+        +'Return ONLY this JSON (no markdown):\n'
+        +'{\n'
+        +'  "overallSummary": "3-5 sentence plain English overview for a finance manager. Mention total invoices checked, key issues found, total money at risk, and overall audit health.",\n'
+        +'  "findings": [\n'
+        +'    {\n'
+        +'      "type": "CALC_ERROR|COMPLIANCE|FRAUD|PRICING|DUPLICATE|GST_RATE|MISSING_FIELD|OTHER",\n'
+        +'      "severity": "CRITICAL|HIGH|MEDIUM|LOW",\n'
+        +'      "title": "Short title of finding",\n'
+        +'      "vendorName": "vendor name or Unknown",\n'
+        +'      "invoiceFile": "filename",\n'
+        +'      "overchargeAmt": 0,\n'
+        +'      "desc": "Clear factual description of what is wrong and exact amounts involved",\n'
+        +'      "plainEnglish": "2-3 sentence simple explanation for non-accountants",\n'
+        +'      "action": "Specific action the accounts team should take TODAY"\n'
+        +'    }\n'
+        +'  ],\n'
+        +'  "findingNarratives": {}\n'
+        +'}\n'
+        +'If no issues found, return empty findings array. Be accurate — do NOT flag issues that do not exist.';
+
+      var resp=await fetch('/api/groq',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'user',content:prompt}],max_tokens:3000,temperature:0.1})
+      });
+      if(!resp.ok){var et=await resp.text().catch(function(){return'';});throw new Error('Groq '+resp.status+': '+et.slice(0,200));}
+      var data=await resp.json();
+      var raw='';try{raw=data.choices[0].message.content||'';}catch(e){raw='';}
+      raw=raw.trim().replace(/^```json\s*/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+      var parsed;
+      try{parsed=JSON.parse(raw);}
+      catch(e){var mo=raw.match(/\{[\s\S]*\}/);if(mo){try{parsed=JSON.parse(mo[0]);}catch(e2){parsed=null;}}}
+      if(!parsed)throw new Error('Could not parse Groq response');
+
+      // Convert AI findings to app finding format
+      var aiFindings=(parsed.findings||[]).map(function(it,i){return {
+        id:'ai-'+Date.now()+'-'+i,
+        type:String(it.type||'OTHER').toUpperCase(),
+        severity:['CRITICAL','HIGH','MEDIUM','LOW'].includes(String(it.severity||'').toUpperCase())?String(it.severity).toUpperCase():'MEDIUM',
+        title:String(it.title||'AI Finding'),
+        vendorName:String(it.vendorName||'Unknown'),
+        overchargeAmt:parseFloat(it.overchargeAmt)||0,
+        desc:String(it.desc||''),
+        plainEnglish:String(it.plainEnglish||''),
+        action:String(it.action||''),
+        file:String(it.invoiceFile||''),
+        ref:String(it.invoiceFile||'AI'),
+        isAI:true
+      };});
+
+      setAiRes({
+        summary:String(parsed.overallSummary||''),
+        narratives:{},
+        extras:aiFindings
+      });
+      setAiDoneV(true);
+    }catch(e){setAiErrV(e.message||'AI Audit failed');}
     setAiRunningV(false);
   }
   var SEV={CRITICAL:{c:C.red,o:0},HIGH:{c:C.amber,o:1},MEDIUM:{c:C.blue,o:2},LOW:{c:C.green,o:3}};
@@ -1174,7 +1117,7 @@ function AuditFindings(props){
       h('div',{style:{flex:1,minWidth:180}},
         h('div',{style:{fontSize:12,fontWeight:700,color:'#8B5CF6',marginBottom:2}},'✨ AI Overseer · Groq llama-3.3-70b'),
         h('div',{style:{fontSize:11,color:C.faint}},
-          aiDoneV?'✓ Done · Plain-English summaries added to each finding':
+            aiDoneV?'✓ AI Audit Complete · Click to Re-run':
           aiRunningV?'Analysing all documents and writing summaries...':
           'Click to get plain-English explanations for every finding.')
       ),
@@ -1183,7 +1126,7 @@ function AuditFindings(props){
         ?h('div',{style:{display:'flex',alignItems:'center',gap:8,color:'#8B5CF6',fontSize:12}},
             h('div',{className:'spin',style:{width:14,height:14,border:'2px solid rgba(139,92,246,0.2)',borderTopColor:'#8B5CF6',borderRadius:'50%'}}),'Analysing...')
         :h('button',{onClick:handleRunAI,style:{background:'linear-gradient(135deg,#8B5CF6,#6D28D9)',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}},
-            aiDoneV?'↻ Re-run AI Audit':'▶ Run AI Overseer')
+            aiDoneV?'↻ Re-run AI Audit':'▶ Run AI Audit')
     ):null,
     approved.length===0
       ? h(Empty,{icon:'🛡️',msg:'No invoices audited yet',sub:'Upload and approve invoices in the Document Hub. Findings appear automatically.'})
