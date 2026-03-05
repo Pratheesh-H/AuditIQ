@@ -54,7 +54,6 @@ export default async function handler(req, res) {
       // On quota/auth errors try next engine if one exists
       if ((r.status === 429 || r.status === 401 || r.status === 403) && i < available.length - 1) {
         lastError = `${engine.label} returned ${r.status} — switching to ${available[i + 1].label}`;
-        console.warn(lastError);
         continue;
       }
 
@@ -65,7 +64,6 @@ export default async function handler(req, res) {
 
     } catch (e) {
       lastError = `${engine.label} network error: ${e.message}`;
-      console.warn(lastError);
       if (i < available.length - 1) continue;
     }
   }
