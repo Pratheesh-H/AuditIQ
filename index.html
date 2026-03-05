@@ -5,10 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>AuditIQ</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;overflow:hidden}
-body{font-family:'DM Sans',sans-serif;background:#0A0D14;color:#E2E8F0;-webkit-font-smoothing:antialiased}
+body{font-family:'DM Sans',sans-serif;background:#0A0D14;color:#E2E8F0;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
+body.light{background:#F1F5F9;color:#0F172A}
+body.light ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15)}
+body.light input,body.light select,body.light textarea{background:#FFFFFF;border-color:rgba(0,0,0,0.15);color:#0F172A}
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}
 input,select,textarea{font-family:'DM Sans',sans-serif;background:#111520;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:9px 12px;color:#E2E8F0;font-size:13px;width:100%;outline:none;transition:border-color .15s}
 input:focus,select:focus,textarea:focus{border-color:#F59E0B}
@@ -19,7 +24,31 @@ button:hover{opacity:.85}button:active{transform:scale(.97)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .fu{animation:fadeUp .3s ease both}.pu{animation:pulse 2.2s infinite}.spin{animation:spin 1s linear infinite}
-.card{background:#0D1117;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:20px 22px}
+.card{background:#0D1117;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:20px 22px;transition:background .2s,border-color .2s}
+body.light .card{background:#FFFFFF;border-color:rgba(0,0,0,0.08)}
+body.light .tb{border-color:rgba(0,0,0,0.14);background:rgba(0,0,0,0.04);color:rgba(0,0,0,0.72)}
+body.light .tb:hover{border-color:rgba(0,0,0,0.28);color:rgba(0,0,0,0.92)}
+body.light .ni:hover{background:rgba(0,0,0,0.04)!important}
+body.light .rh:hover{background:rgba(0,0,0,0.02)!important}
+body.light .ni{color:rgba(0,0,0,0.65)!important}
+body.light nav .ni span{color:rgba(0,0,0,0.65)}
+body.light [style*="background:#0D1117"]{background:#FFFFFF!important}
+body.light [style*="background:#0A0D14"]{background:#F1F5F9!important}
+body.light [style*="background:#111520"]{background:#FFFFFF!important}
+body.light [style*="borderRight:'1px solid rgba(255,255,255,0.07)"]{border-color:rgba(0,0,0,0.08)!important}
+body.light [style*="borderBottom:'1px solid rgba(255,255,255,0.07)"]{border-color:rgba(0,0,0,0.08)!important}
+body.light [style*="border:'1px solid rgba(255,255,255,0.07)"]{border-color:rgba(0,0,0,0.08)!important}
+body.light [style*="rgba(255,255,255,0.02)"]{background:rgba(0,0,0,0.02)!important}
+body.light [style*="rgba(255,255,255,0.03)"]{background:rgba(0,0,0,0.025)!important}
+body.light [style*="rgba(255,255,255,0.04)"]{background:rgba(0,0,0,0.035)!important}
+body.light [style*="rgba(255,255,255,0.06)"]{background:rgba(0,0,0,0.045)!important}
+body.light [style*="rgba(255,255,255,0.18)"]{color:rgba(0,0,0,0.42)!important}
+body.light [style*="rgba(255,255,255,0.55)"]{color:rgba(0,0,0,0.6)!important}
+body.light [style*="rgba(255,255,255,0.65)"]{color:rgba(0,0,0,0.7)!important}
+body.light [style*="rgba(255,255,255,0.75)"]{color:rgba(0,0,0,0.78)!important}
+body.light [style*="rgba(255,255,255,0.7)"]{color:rgba(0,0,0,0.75)!important}
+body.light [style*="color:#E2E8F0"]{color:#1E293B!important}
+body.light [style*="color:#e2e8f0"]{color:#1E293B!important}
 .ni{transition:all .15s;cursor:pointer;user-select:none}.ni:hover{background:rgba(255,255,255,0.04)!important}
 .rh{transition:background .12s;cursor:pointer}.rh:hover{background:rgba(255,255,255,0.025)!important}
 .tb{padding:8px 12px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.5);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif}
@@ -40,9 +69,21 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 'use strict';
 const {useState,useEffect,useRef}=React;
 const h=React.createElement;
-const C={bg:'#0A0D14',panel:'#0D1117',border:'rgba(255,255,255,0.07)',
-  amber:'#F59E0B',red:'#EF4444',green:'#10B981',blue:'#3B82F6',purple:'#8B5CF6',cyan:'#06B6D4',
-  text:'#E2E8F0',muted:'rgba(255,255,255,0.45)',faint:'rgba(255,255,255,0.18)'};
+function makeTheme(dark){
+  return dark?{
+    bg:'#0A0D14',panel:'#0D1117',border:'rgba(255,255,255,0.07)',
+    amber:'#F59E0B',red:'#EF4444',green:'#10B981',blue:'#3B82F6',purple:'#8B5CF6',cyan:'#06B6D4',
+    text:'#E2E8F0',muted:'rgba(255,255,255,0.45)',faint:'rgba(255,255,255,0.18)',
+    input:'#111520',inputBorder:'rgba(255,255,255,0.12)',dark:true
+  }:{
+    bg:'#F1F5F9',panel:'#FFFFFF',border:'rgba(0,0,0,0.08)',
+    amber:'#D97706',red:'#DC2626',green:'#059669',blue:'#2563EB',purple:'#7C3AED',cyan:'#0891B2',
+    text:'#0F172A',muted:'rgba(0,0,0,0.65)',faint:'rgba(0,0,0,0.42)',
+    input:'#FFFFFF',inputBorder:'rgba(0,0,0,0.15)',dark:false
+  };
+}
+var _darkMode=true;
+var C=makeTheme(_darkMode);
 const IS_LOCAL=false;
 const GEMINI_KEY='AIzaSyDfNnIKEdje4zLVTlEn0zFKEtQBRD0F6lc';
 const GEMINI_MODEL='gemini-2.0-flash';
@@ -802,11 +843,31 @@ async function runGroqOversight(invoices,contracts,rateCards,vmData,ruleFindings
     return o;
   }
   // Only send key fields to reduce tokens ~60%
-  var prompt='GST auditor. JSON array only, no markdown. Skip already-found: '+JSON.stringify(ruleFindings.map(function(f){return f.type+':'+f.title;}))+'\n'
-    +'INV:'+JSON.stringify(invoices.map(function(f){return{f:f.name,d:af(f.extraction)};}))
-    +'\nCON:'+JSON.stringify(contracts.map(function(f){return{f:f.name,d:af(f.extraction)};}))
-    +'\nVM:'+JSON.stringify(vmData.map(function(v){return{n:v.name,g:v.gstin};}))
-    +'\nFormat: [{type,severity,title,vendorName,invoiceFile,overchargeAmt,desc,action}]. Empty=[]';
+  // Build a plain-English audit narrative using AI
+  var rulesSummary=ruleFindings.map(function(f){
+    return {type:f.type,title:f.title,vendor:f.vendorName,amount:f.overchargeAmt,desc:f.desc};
+  });
+  var prompt='You are a senior Indian GST and procurement auditor writing a board-level audit report.\n'
+    +'I have already detected the following rule-based findings:\n'+JSON.stringify(rulesSummary)+'\n\n'
+    +'Invoice data:\n'+JSON.stringify(invoices.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
+    +'\n\nContracts/Rate cards:\n'+JSON.stringify(contracts.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
+    +'\n\nVendor master:\n'+JSON.stringify(vmData.map(function(v){return{name:v.name,gstin:v.gstin};}))
+    +'\n\nReturn ONLY a valid JSON object (no markdown) with this exact structure:\n'
+    +'{\n'
+    +'  "overallSummary": "3-5 sentence plain English overview of the entire audit. Mention total risk, key vendors flagged, and overall health of the invoice set. Write as if explaining to a finance manager who is not a GST expert.",\n'
+    +'  "findingNarratives": [\n'
+    +'    {\n'
+    +'      "findingTitle": "exact title from rule findings above",\n'
+    +'      "plainEnglish": "2-4 sentence explanation in simple language. Explain what went wrong, why it matters, what money is at risk, and what the vendor may have done incorrectly. Avoid jargon.",\n'
+    +'      "riskImpact": "One sentence on financial or compliance risk if not acted upon.",\n'
+    +'      "immediateStep": "One clear sentence on what the accounts team should do TODAY."\n'
+    +'    }\n'
+    +'  ],\n'
+    +'  "additionalFindings": [\n'
+    +'    {"type":"COMPLIANCE","severity":"HIGH","title":"...","vendorName":"...","invoiceFile":"...","overchargeAmt":0,"desc":"...","action":"...","plainEnglish":"..."}\n'
+    +'  ]\n'
+    +'}\n'
+    +'additionalFindings = any NEW issues you spot that the rules missed (fuzzy name match, missing fields, contract violations). Empty array if none.';
   var resp=await fetch('/api/groq',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -815,24 +876,50 @@ async function runGroqOversight(invoices,contracts,rateCards,vmData,ruleFindings
   var data=await resp.json();
   var raw='';try{raw=data.choices[0].message.content||'';}catch(e){raw='';}
   raw=raw.trim().replace(/^```json\s*/i,'').replace(/^```/,'').replace(/```$/,'').trim();
-  var parsed;try{parsed=JSON.parse(raw);}catch(e){var m=raw.match(/\[[\s\S]*\]/);if(m){try{parsed=JSON.parse(m[0]);}catch(e2){return[];}}else{return [];}}
-  if(!Array.isArray(parsed))return[];
-  return parsed.map(function(it,i){return{
+  var parsed;
+  try{parsed=JSON.parse(raw);}
+  catch(e){
+    var mo=raw.match(/\{[\s\S]*\}/);
+    if(mo){try{parsed=JSON.parse(mo[0]);}catch(e2){parsed=null;}}
+  }
+  if(!parsed||typeof parsed!=='object'){return{summary:'',narratives:{},extras:[]};}
+  // Build narratives lookup keyed by finding title
+  var narratives={};
+  (parsed.findingNarratives||[]).forEach(function(n){
+    if(n&&n.findingTitle){
+      narratives[n.findingTitle]={
+        plainEnglish:String(n.plainEnglish||''),
+        riskImpact:String(n.riskImpact||''),
+        immediateStep:String(n.immediateStep||'')
+      };
+    }
+  });
+  // Extra findings AI spotted beyond rule-engine
+  var extras=(parsed.additionalFindings||[]).map(function(it,i){return{
     id:'ai-'+Date.now()+'-'+i,
     type:String(it.type||'COMPLIANCE').toUpperCase(),
     severity:['CRITICAL','HIGH','MEDIUM','LOW'].includes(String(it.severity||'').toUpperCase())?String(it.severity).toUpperCase():'MEDIUM',
     title:String(it.title||'AI Finding'),vendorName:String(it.vendorName||'Unknown'),
-    overchargeAmt:parseFloat(it.overchargeAmt)||0,desc:String(it.desc||''),
+    overchargeAmt:parseFloat(it.overchargeAmt)||0,
+    desc:String(it.desc||''),plainEnglish:String(it.plainEnglish||''),
     action:String(it.action||''),file:String(it.invoiceFile||''),ref:'AI Analysis',isAI:true};});
+  return{summary:String(parsed.overallSummary||''),narratives:narratives,extras:extras};
 }
 
 function AuditFindings(props){
   var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster,config=props.config;
   var filterState=useState('ALL');var filter=filterState[0];var setFilter=filterState[1];
-  var aiFS=useState([]);var aiFindings=aiFS[0];var setAiFindings=aiFS[1];
-  var aiRS=useState(false);var aiRunning=aiRS[0];var setAiRunning=aiRS[1];
-  var aiES=useState('');var aiErr=aiES[0];var setAiErr=aiES[1];
-  var aiDS=useState(false);var aiDone=aiDS[0];var setAiDone=aiDS[1];
+  var aiResState=useState(null);var aiRes=aiResState[0];var setAiRes=aiResState[1];
+  var aiRunning=useState(false)[0];var setAiRunning=useState(false)[1];
+  var aiErr=useState('')[0];var setAiErr=useState('')[1];
+  var aiDone=useState(false)[0];var setAiDone=useState(false)[1];
+  var _aiR=useState(false);var aiRunningV=_aiR[0];var setAiRunningV=_aiR[1];
+  var _aiE=useState('');var aiErrV=_aiE[0];var setAiErrV=_aiE[1];
+  var _aiD=useState(false);var aiDoneV=_aiD[0];var setAiDoneV=_aiD[1];
+  // Extract from structured result
+  var aiSummary=aiRes?aiRes.summary:'';
+  var aiNarratives=aiRes?aiRes.narratives:{};
+  var aiExtras=aiRes?aiRes.extras:[];
 
   function getField(extraction,name){
     if(!extraction||!extraction.fields)return null;
@@ -1036,16 +1123,16 @@ function AuditFindings(props){
     }
   });
 
-  var allFindings=findings.concat(aiFindings);
+  var allFindings=findings.concat(aiExtras);
   async function handleRunAI(){
-    setAiRunning(true);setAiErr('');setAiDone(false);
+    setAiRunningV(true);setAiErrV('');setAiDoneV(false);
     try{
       var con=uploadedFiles.filter(function(f){return f.zone==='CONTRACTS'&&f.status==='REVIEWED'&&f.extraction;});
       var rc=uploadedFiles.filter(function(f){return f.zone==='RATE_CARDS'&&f.status==='REVIEWED'&&f.extraction;});
       var res=await runGroqOversight(approved,con,rc,vendorMaster,findings);
-      setAiFindings(res);setAiDone(true);
-    }catch(e){setAiErr(e.message||'AI Oversight failed');}
-    setAiRunning(false);
+      setAiRes(res);setAiDoneV(true);
+    }catch(e){setAiErrV(e.message||'AI Oversight failed');}
+    setAiRunningV(false);
   }
   var SEV={CRITICAL:{c:C.red,o:0},HIGH:{c:C.amber,o:1},MEDIUM:{c:C.blue,o:2},LOW:{c:C.green,o:3}};
   var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing',NAME_MISMATCH:'Name Match'};
@@ -1088,43 +1175,80 @@ function AuditFindings(props){
       h('div',{style:{flex:1,minWidth:180}},
         h('div',{style:{fontSize:12,fontWeight:700,color:'#8B5CF6',marginBottom:2}},'✨ AI Overseer · Groq llama-3.3-70b'),
         h('div',{style:{fontSize:11,color:C.faint}},
-          aiDone?'✓ Done · '+aiFindings.length+' extra finding'+(aiFindings.length!==1?'s':'')+' found':
-          aiRunning?'Cross-matching all documents...':
-          'Catches fuzzy name mismatches, contract violations & more.')
+          aiDoneV?'✓ Done · Plain-English summaries added to each finding':
+          aiRunningV?'Analysing all documents and writing summaries...':
+          'Click to get plain-English explanations for every finding.')
       ),
-      aiErr?h('div',{style:{fontSize:11,color:C.red,padding:'4px 10px',background:C.red+'10',borderRadius:6}},'⚠ '+aiErr):null,
-      aiRunning
+      aiErrV?h('div',{style:{fontSize:11,color:C.red,padding:'4px 10px',background:C.red+'10',borderRadius:6}},'⚠ '+aiErrV):null,
+      aiRunningV
         ?h('div',{style:{display:'flex',alignItems:'center',gap:8,color:'#8B5CF6',fontSize:12}},
             h('div',{className:'spin',style:{width:14,height:14,border:'2px solid rgba(139,92,246,0.2)',borderTopColor:'#8B5CF6',borderRadius:'50%'}}),'Analysing...')
         :h('button',{onClick:handleRunAI,style:{background:'linear-gradient(135deg,#8B5CF6,#6D28D9)',color:'#fff',border:'none',borderRadius:8,padding:'9px 18px',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}},
-            aiDone?'↻ Re-run AI Audit':'▶ Run AI Overseer')
+            aiDoneV?'↻ Re-run AI Audit':'▶ Run AI Overseer')
     ):null,
     approved.length===0
-      ? h(Empty,{icon:'\uD83D\uDEE1\uFE0F',msg:'No invoices audited yet',sub:'Upload and approve invoices in the Document Hub. Findings appear automatically.'})
+      ? h(Empty,{icon:'🛡️',msg:'No invoices audited yet',sub:'Upload and approve invoices in the Document Hub. Findings appear automatically.'})
       : visible.length===0
         ? h('div',{className:'card',style:{textAlign:'center',padding:'44px 20px',color:C.green}},
-            h('div',{style:{fontSize:36,marginBottom:12}},'\u2705'),
+            h('div',{style:{fontSize:36,marginBottom:12}},'✅'),
             h('div',{style:{fontSize:14,fontWeight:700,marginBottom:6}},'No findings in this category'),
             h('div',{style:{fontSize:12,color:C.muted}},approved.length+' invoice'+(approved.length>1?'s':'')+' passed all checks.')
           )
         : h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
-            h('div',{style:{fontSize:12,color:C.muted,marginBottom:4}},visible.length+' finding'+(visible.length>1?'s':'')+' \u00B7 '+approved.length+' invoice'+(approved.length>1?'s':'')+' audited'),
+            // ── AI Overall Summary Banner ──────────────────────────
+            aiSummary?h('div',{style:{background:'linear-gradient(135deg,rgba(139,92,246,0.12),rgba(109,40,217,0.06))',border:'1px solid rgba(139,92,246,0.3)',borderRadius:12,padding:'16px 20px',marginBottom:4}},
+              h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10}},
+                h('span',{style:{fontSize:14}},'🧠'),
+                h('span',{style:{fontSize:13,fontWeight:700,color:'#8B5CF6'}}),'AI Audit Summary'
+              ),
+              h('div',{style:{fontSize:13,color:C.text,lineHeight:1.8,fontStyle:'italic'}},'"'+aiSummary+'"')
+            ):null,
+            h('div',{style:{fontSize:12,color:C.muted,marginBottom:4}},visible.length+' finding'+(visible.length>1?'s':'')+' · '+approved.length+' invoice'+(approved.length>1?'s':'')+' audited'),
             visible.map(function(finding){
               var sev=SEV[finding.severity]||{c:C.muted};
-              return h('div',{key:finding.id,className:'card',style:{borderLeft:'3px solid '+(finding.isAI?'#8B5CF6':sev.c),padding:'14px 18px'}},
-                h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}},
-                  h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
-                    h('span',{style:{fontSize:11,fontWeight:700,color:sev.c,background:sev.c+'15',border:'1px solid '+sev.c+'30',padding:'2px 8px',borderRadius:4}},finding.severity),
-                    h('span',{style:{fontSize:11,fontWeight:700,color:C.muted,background:'rgba(255,255,255,0.06)',padding:'2px 8px',borderRadius:4}},TYPE_LABELS[finding.type]||finding.type),
-                    finding.overchargeAmt>0?h('span',{style:{fontSize:11,fontWeight:700,color:C.red,background:C.red+'12',border:'1px solid '+C.red+'30',padding:'2px 8px',borderRadius:4}},'\u20B9'+finding.overchargeAmt.toLocaleString('en-IN',{minimumFractionDigits:2})+' overcharge'):null
+              var narrative=aiNarratives[finding.title]||null;
+              return h('div',{key:finding.id,className:'card',style:{borderLeft:'3px solid '+(finding.isAI?'#8B5CF6':sev.c),padding:'0',overflow:'hidden'}},
+                // ── Header strip ──
+                h('div',{style:{padding:'14px 18px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)'}},
+                  h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}},
+                    h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+                      h('span',{style:{fontSize:11,fontWeight:700,color:sev.c,background:sev.c+'15',border:'1px solid '+sev.c+'30',padding:'2px 8px',borderRadius:4}},finding.severity),
+                      h('span',{style:{fontSize:11,fontWeight:700,color:C.muted,background:'rgba(255,255,255,0.06)',padding:'2px 8px',borderRadius:4}},TYPE_LABELS[finding.type]||finding.type),
+                      finding.overchargeAmt>0?h('span',{style:{fontSize:11,fontWeight:700,color:C.red,background:C.red+'12',border:'1px solid '+C.red+'30',padding:'2px 8px',borderRadius:4}},'₹'+finding.overchargeAmt.toLocaleString('en-IN',{minimumFractionDigits:2})+' overcharge'):null,
+                      finding.isAI?h('span',{style:{fontSize:10,color:'#8B5CF6',background:'rgba(139,92,246,0.1)',padding:'2px 8px',borderRadius:4}},'AI Detected'):null
+                    ),
+                    h('span',{style:{fontSize:11,color:C.faint,flexShrink:0,marginLeft:8}},finding.file)
                   ),
-                  h('span',{style:{fontSize:11,color:C.faint,flexShrink:0,marginLeft:8}},finding.file)
+                  h('div',{style:{fontSize:14,fontWeight:700,color:C.text}},finding.title)
                 ),
-                h('div',{style:{fontSize:13,fontWeight:700,marginBottom:6,color:C.text}},finding.title),
-                h('div',{style:{fontSize:12,color:C.muted,lineHeight:1.7,marginBottom:8}},finding.desc),
-                finding.action?h('div',{style:{background:C.amber+'08',border:'1px solid '+C.amber+'25',borderRadius:6,padding:'8px 12px',fontSize:11,color:'rgba(255,255,255,0.75)',lineHeight:1.6}},
-                  h('span',{style:{color:C.amber,fontWeight:700}},'Recommended Action: '),finding.action):null,
-                h('div',{style:{fontSize:11,color:C.faint,marginTop:8}},finding.ref)
+                // ── Body ──
+                h('div',{style:{padding:'12px 18px',display:'flex',flexDirection:'column',gap:10}},
+                  // Technical description (existing)
+                  h('div',{style:{fontSize:12,color:C.muted,lineHeight:1.7}},finding.desc),
+                  // ── AI Plain-English Narrative ──────────────────
+                  narrative?h('div',{style:{background:'rgba(139,92,246,0.06)',border:'1px solid rgba(139,92,246,0.2)',borderRadius:8,padding:'12px 14px',display:'flex',flexDirection:'column',gap:8}},
+                    h('div',{style:{fontSize:10,color:'#8B5CF6',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:2}},'🧠 AI Explanation'),
+                    h('div',{style:{fontSize:13,color:C.text,lineHeight:1.85}},narrative.plainEnglish),
+                    narrative.riskImpact?h('div',{style:{display:'flex',gap:8,alignItems:'flex-start',paddingTop:8,borderTop:'1px solid rgba(139,92,246,0.15)'}},
+                      h('span',{style:{fontSize:16,flexShrink:0}},'⚠️'),
+                      h('div',null,
+                        h('div',{style:{fontSize:10,color:C.amber,fontWeight:700,marginBottom:2}},'RISK IF IGNORED'),
+                        h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7}},narrative.riskImpact)
+                      )
+                    ):null,
+                    narrative.immediateStep?h('div',{style:{display:'flex',gap:8,alignItems:'flex-start',paddingTop:8,borderTop:'1px solid rgba(139,92,246,0.15)'}},
+                      h('span',{style:{fontSize:16,flexShrink:0}},'✅'),
+                      h('div',null,
+                        h('div',{style:{fontSize:10,color:C.green,fontWeight:700,marginBottom:2}},'DO THIS TODAY'),
+                        h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7}},narrative.immediateStep)
+                      )
+                    ):null
+                  ):null,
+                  // Recommended action box
+                  finding.action?h('div',{style:{background:C.amber+'08',border:'1px solid '+C.amber+'25',borderRadius:6,padding:'10px 14px',fontSize:11,color:'rgba(255,255,255,0.75)',lineHeight:1.6}},
+                    h('span',{style:{color:C.amber,fontWeight:700}},'📋 Recommended Action: '),finding.action):null,
+                  h('div',{style:{fontSize:11,color:C.faint}},finding.ref)
+                )
               );
             })
           )
@@ -1420,193 +1544,157 @@ function Reports(props){
   }
 
   function downloadPDF(){
-    // ── Compute findings scoped to filtered invoices ──────────
+    var jsPDF=window.jspdf?window.jspdf.jsPDF:null;
+    if(!jsPDF){alert('PDF library not loaded. Please check your internet connection and try again.');return;}
+
+    // ── Build findings from filtered invoices ────────────────────
     function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
-    function pAmt(v){
-    if(!v)return 0;
-    var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);
-    if(!tokens||!tokens.length)return 0;
-    var best=0;
-    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
-    return best;
-  }
+    function pAmt(v){if(!v)return 0;var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);if(!tokens||!tokens.length)return 0;var best=0;tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});return best;}
     var rptFindings=[];
     filtered.forEach(function(f){
       var ex=f.extraction;
-      var vendorName=gfx(ex,'Vendor Name');
-      var invoiceTotal=gfx(ex,'Invoice Total');
-      var taxableAmt=gfx(ex,'Taxable Amount');
-      var cgst=gfx(ex,'CGST');var sgst=gfx(ex,'SGST');var igst=gfx(ex,'IGST');
-      var gstin=gfx(ex,'Vendor GSTIN');
-      var ifsc=gfx(ex,'IFSC Code');
-      var hsnField=gfx(ex,'HSN / SAC Code');
-      var rateField=gfx(ex,'Rate per Unit');
-      var qtyField=gfx(ex,'Quantity');
-      var totalAmt=pAmt(invoiceTotal);
-      var taxable=pAmt(taxableAmt);
-
-      // Calc error
-      if(totalAmt&&taxable){
-        var taxTotal=0;
-        if(cgst)taxTotal+=extractTaxAmt(cgst);
-        if(sgst)taxTotal+=extractTaxAmt(sgst);
-        if(igst)taxTotal+=extractTaxAmt(igst);
-        if(taxTotal>0){
-          var diff=totalAmt-(taxable+taxTotal);
-          if(Math.abs(diff)>((parseFloat(config.calcErrTolerance)||0.5)))
-            rptFindings.push({type:'CALC ERROR',sev:'HIGH',vendor:vendorName||'?',file:f.name,
-              over:diff>0?diff:0,desc:'Invoice total \u20B9'+totalAmt.toLocaleString('en-IN')+' \u2260 taxable+taxes. Diff: \u20B9'+Math.abs(diff).toFixed(2),
-              action:'Demand revised invoice. Do not pay until corrected.'});
-        }
-      }
-      // HSN rate check
-      if(hsnField&&(cgst||igst)){
-        var hsnCode=hsnField.replace(/[^0-9]/g,'');
-        var mr=(config.gstRates||[]).find(function(r){return hsnCode.startsWith(r.hsn.replace(/[^0-9]/g,''));});
-        if(mr){
-          var expRate=parseFloat(mr.rate)||0;var actRate=0;
-          if(cgst){var mcr=cgst.match(/^([\d.]+)%/);if(mcr)actRate=parseFloat(mcr[1])*2;}
-          if(igst&&!actRate){var mir=igst.match(/^([\d.]+)%/);if(mir)actRate=parseFloat(mir[1]);}
-          if(actRate>0&&Math.abs(actRate-expRate)>0.5){
-            var overR=(pAmt(taxableAmt)||0)*(actRate-expRate)/100;
-            rptFindings.push({type:'WRONG GST RATE',sev:'HIGH',vendor:vendorName||'?',file:f.name,
-              over:overR>0?overR:0,desc:'HSN '+hsnField+' should attract '+expRate+'% GST but vendor charged '+actRate+'%.',
-              action:'Reject invoice. Request revised invoice at correct GST rate. Recover ITC risk amount.'});
-          }
-        }
-      }
-      // GSTIN compliance
-      if(gstin&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin))
-        rptFindings.push({type:'INVALID GSTIN',sev:'HIGH',vendor:vendorName||'?',file:f.name,over:0,
-          desc:'GSTIN "'+gstin+'" fails format check. ITC claim at risk.',
-          action:'Do not claim ITC. Contact vendor for corrected GST registration details before payment.'});
-      // Bank mismatch
-      if(vendorName&&ifsc&&config.bankValidation){
-        var vmv=vendorMaster.find(function(v){return (v.name&&v.name.toLowerCase()===(vendorName||'').toLowerCase())||(v.gstin&&v.gstin===gstin);});
-        if(vmv&&vmv.ifsc&&vmv.ifsc!==ifsc)
-          rptFindings.push({type:'BANK MISMATCH',sev:'CRITICAL',vendor:vendorName||'?',file:f.name,
-            over:totalAmt||0,desc:'Invoice IFSC "'+ifsc+'" differs from Vendor Master IFSC "'+vmv.ifsc+'".',
-            action:'HOLD PAYMENT. Verify bank change directly with vendor via registered phone. Do not transfer until confirmed.'});
-      }
-      // Rate deviation
+      var vendorName=gfx(ex,'Vendor Name');var invoiceTotal=gfx(ex,'Invoice Total');
+      var taxableAmt=gfx(ex,'Taxable Amount');var cgst=gfx(ex,'CGST');var sgst=gfx(ex,'SGST');var igst=gfx(ex,'IGST');
+      var gstin=gfx(ex,'Vendor GSTIN');var ifsc=gfx(ex,'IFSC Code');var hsnField=gfx(ex,'HSN / SAC Code');
+      var rateField=gfx(ex,'Rate per Unit');var qtyField=gfx(ex,'Quantity');
+      var totalAmt=pAmt(invoiceTotal);var taxable=pAmt(taxableAmt);
+      if(totalAmt&&taxable){var taxT=0;if(cgst)taxT+=extractTaxAmt(cgst);if(sgst)taxT+=extractTaxAmt(sgst);if(igst)taxT+=extractTaxAmt(igst);if(taxT>0){var diff=totalAmt-(taxable+taxT);if(Math.abs(diff)>(parseFloat(config.calcErrTolerance)||0.5))rptFindings.push({type:'CALC ERROR',sev:'HIGH',vendor:vendorName||'?',file:f.name,over:diff>0?diff:0,desc:'Invoice total \u20B9'+totalAmt.toLocaleString('en-IN')+' \u2260 taxable+taxes. Diff: \u20B9'+Math.abs(diff).toFixed(2),action:'Hold payment. Request a corrected invoice.'});}}
+      if(hsnField&&(cgst||igst)){var hsnCode=hsnField.replace(/[^0-9]/g,'');var mr=(config.gstRates||[]).find(function(r){return hsnCode.startsWith(r.hsn.replace(/[^0-9]/g,''));});if(mr){var expR=parseFloat(mr.rate)||0;var actR=0;if(cgst){var mcr2=cgst.match(/^([\d.]+)%/);if(mcr2)actR=parseFloat(mcr2[1])*2;}if(igst&&!actR){var mir2=igst.match(/^([\d.]+)%/);if(mir2)actR=parseFloat(mir2[1]);}if(actR>0&&Math.abs(actR-expR)>0.5){var overR=(pAmt(taxableAmt)||0)*(actR-expR)/100;rptFindings.push({type:'WRONG GST RATE',sev:'HIGH',vendor:vendorName||'?',file:f.name,over:overR>0?overR:0,desc:'HSN '+hsnField+' should attract '+expR+'% GST but vendor charged '+actR+'%.',action:'Reject invoice. Request revised invoice at correct GST rate.'});}}}
+      if(gstin&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin))rptFindings.push({type:'INVALID GSTIN',sev:'HIGH',vendor:vendorName||'?',file:f.name,over:0,desc:'GSTIN "'+gstin+'" fails format check. ITC claim at risk.',action:'Block ITC claim. Contact vendor for correct GSTIN.'});
+      if(vendorName&&ifsc&&config.bankValidation){var vmv2=vendorMaster.find(function(v){return (v.name&&v.name.toLowerCase()===(vendorName||'').toLowerCase())||(v.gstin&&v.gstin===gstin);});if(vmv2&&vmv2.ifsc&&vmv2.ifsc!==ifsc)rptFindings.push({type:'BANK MISMATCH',sev:'CRITICAL',vendor:vendorName||'?',file:f.name,over:totalAmt||0,desc:'Invoice IFSC "'+ifsc+'" differs from Vendor Master IFSC "'+vmv2.ifsc+'".',action:'FREEZE PAYMENT. Verify bank change directly with vendor.'});}
       var rateVal=pAmt(rateField);var qtyVal=pAmt(qtyField);
-      if(rateVal&&vendorName){
-        uploadedFiles.filter(function(f2){return (f2.zone==='RATE_CARDS'||f2.zone==='CONTRACTS')&&f2.status==='REVIEWED'&&f2.extraction;}).forEach(function(rcf){
-          var rcV=gfx(rcf.extraction,'Vendor Name')||gfx(rcf.extraction,'Vendor');
-          var rcR=pAmt(gfx(rcf.extraction,'Rate per Unit')||gfx(rcf.extraction,'Contracted Rate'));
-          if(rcV&&rcV.toLowerCase()===(vendorName||'').toLowerCase()&&rcR){
-            var devPct=((rateVal-rcR)/rcR)*100;
-            var thresh=parseFloat(config.pricingDeviation)||5;
-            if(devPct>thresh){
-              var over=qtyVal?(rateVal-rcR)*qtyVal:0;
-              rptFindings.push({type:'RATE OVERBILLING',sev:'MEDIUM',vendor:vendorName||'?',file:f.name,
-                over:over,desc:'Rate \u20B9'+rateVal+'/unit vs agreed \u20B9'+rcR+'/unit. Overbilling: +'+devPct.toFixed(1)+'%'+(over?'. Est. overcharge: \u20B9'+over.toFixed(2):'')+'.',
-                action:'Issue debit note for \u20B9'+over.toFixed(2)+'. Request revised invoice at contracted rate.'});
-            }
-          }
-        });
-      }
-      // Surcharge
-      if(totalAmt&&taxable&&rateVal&&qtyVal){
-        var rateAmt=rateVal*qtyVal;
-        var unexplained=taxable-rateAmt;
-        var cap=rateAmt*((parseFloat(config.surchargeCapPct)||10)/100);
-        if(unexplained>cap&&unexplained>100)
-          rptFindings.push({type:'MYSTERY SURCHARGE',sev:'MEDIUM',vendor:vendorName||'?',file:f.name,
-            over:unexplained-cap,desc:'Unexplained charges of \u20B9'+unexplained.toFixed(2)+' above rate\xd7qty. Allowed cap: \u20B9'+cap.toFixed(2)+'.',
-            action:'Request itemised breakup of all surcharges. Reject amounts not covered by contract.'});
-      }
+      if(rateVal&&vendorName){uploadedFiles.filter(function(f2){return (f2.zone==='RATE_CARDS'||f2.zone==='CONTRACTS')&&f2.status==='REVIEWED'&&f2.extraction;}).forEach(function(rcf){var rcV=gfx(rcf.extraction,'Vendor Name')||gfx(rcf.extraction,'Vendor');var rcR=pAmt(gfx(rcf.extraction,'Rate per Unit')||gfx(rcf.extraction,'Contracted Rate'));if(rcV&&rcV.toLowerCase()===(vendorName||'').toLowerCase()&&rcR){var devP=((rateVal-rcR)/rcR)*100;if(devP>(parseFloat(config.pricingDeviation)||5)){var ov=qtyVal?(rateVal-rcR)*qtyVal:0;rptFindings.push({type:'RATE OVERBILLING',sev:'MEDIUM',vendor:vendorName||'?',file:f.name,over:ov,desc:'Rate \u20B9'+rateVal+'/unit vs agreed \u20B9'+rcR+'/unit. Deviation: +'+devP.toFixed(1)+'%.',action:'Issue debit note. Request revised invoice at contracted rate.'});}}});}
+      if(totalAmt&&taxable&&rateVal&&qtyVal){var rA=rateVal*qtyVal;var unx=taxable-rA;var cap=rA*((parseFloat(config.surchargeCapPct)||10)/100);if(unx>cap&&unx>100)rptFindings.push({type:'MYSTERY SURCHARGE',sev:'MEDIUM',vendor:vendorName||'?',file:f.name,over:unx-cap,desc:'Unexplained charges \u20B9'+unx.toFixed(2)+' above rate\xD7qty. Cap: \u20B9'+cap.toFixed(2)+'.',action:'Request itemised breakup. Reject amounts not in contract.'});}
     });
-    // Duplicates
-    var rptInvNos={};
-    filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!rptInvNos[n])rptInvNos[n]=[];rptInvNos[n].push(f);}});
-    Object.keys(rptInvNos).forEach(function(n){
-      if(rptInvNos[n].length>1){
-        var dupAmt=rptInvNos[n].reduce(function(s,f){return s+(pAmt(gfx(f.extraction,'Invoice Total'))||0);},0);
-        var singleAmt=pAmt(gfx(rptInvNos[n][0].extraction,'Invoice Total'))||0;
-        rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(rptInvNos[n][0].extraction,'Vendor Name')||'?',file:rptInvNos[n].map(function(f){return f.name;}).join(', '),
-          over:dupAmt-singleAmt,desc:'Invoice "'+n+'" appears '+rptInvNos[n].length+' times. Risk of double payment: \u20B9'+(dupAmt-singleAmt).toLocaleString('en-IN')+'.',
-          action:'Block duplicate copies. Pay only once. Verify with vendor which copy is valid.'});
-      }
-    });
+    var rptInvNos={};filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!rptInvNos[n])rptInvNos[n]=[];rptInvNos[n].push(f);}});
+    Object.keys(rptInvNos).forEach(function(n){if(rptInvNos[n].length>1){var dA=rptInvNos[n].reduce(function(s,f){return s+(pAmt(gfx(f.extraction,'Invoice Total'))||0);},0);var sA=pAmt(gfx(rptInvNos[n][0].extraction,'Invoice Total'))||0;rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(rptInvNos[n][0].extraction,'Vendor Name')||'?',file:rptInvNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,desc:'Invoice "'+n+'" appears '+rptInvNos[n].length+' times. Double payment risk: \u20B9'+(dA-sA).toLocaleString('en-IN')+'.',action:'Block duplicates. Pay only once.'});}});
 
+    var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    var pageW=doc.internal.pageSize.getWidth();
+    var margin=14;
+    var y=margin;
+
+    // ── Header ──────────────────────────────────────────────────
+    doc.setFillColor(10,13,20);
+    doc.rect(0,0,pageW,28,'F');
+    doc.setFontSize(20);doc.setFont('helvetica','bold');
+    doc.setTextColor(14,165,233);doc.text('Audit',margin,18);
+    doc.setTextColor(139,92,246);doc.text('IQ',margin+26,18);
+    doc.setFontSize(8);doc.setFont('helvetica','normal');
+    doc.setTextColor(180,180,180);
+    doc.text('AI Invoice Auditor — Confidential Audit Report',margin,24);
+    var date=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
+    doc.text('Generated: '+date,pageW-margin,18,{align:'right'});
+    doc.text('Scope: '+(scope==='VENDOR'&&vendor?vendor:'All Vendors')+' · '+filtered.length+' invoices',pageW-margin,24,{align:'right'});
+    y=38;
+
+    // ── KPI Boxes ────────────────────────────────────────────────
     var totalOver=rptFindings.reduce(function(s,f){return s+(f.over||0);},0);
     var correctAmt=totalBilled-totalOver;
-    var label=scope==='VENDOR'&&vendor?vendor:'All Vendors';
-    var date=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
-    var sevColor={CRITICAL:'#991B1B',HIGH:'#92400E',MEDIUM:'#1E40AF',LOW:'#065F46'};
+    var kpis=[
+      {l:'Total Billed',v:'₹'+totalBilled.toLocaleString('en-IN',{minimumFractionDigits:2}),c:[59,130,246]},
+      {l:'Total Overcharge',v:totalOver>0?'₹'+totalOver.toLocaleString('en-IN',{minimumFractionDigits:2}):'None',c:totalOver>0?[220,38,38]:[16,185,129]},
+      {l:'Correct Amount',v:'₹'+correctAmt.toLocaleString('en-IN',{minimumFractionDigits:2}),c:[16,185,129]},
+      {l:'Findings',v:String(rptFindings.length),c:[245,158,11]},
+    ];
+    var boxW=(pageW-margin*2-9)/4;
+    kpis.forEach(function(k,i){
+      var bx=margin+i*(boxW+3);
+      doc.setDrawColor(220,220,220);doc.setFillColor(250,250,250);
+      doc.roundedRect(bx,y,boxW,18,2,2,'FD');
+      doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(120,120,120);
+      doc.text(k.l.toUpperCase(),bx+boxW/2,y+6,{align:'center'});
+      doc.setFontSize(10);doc.setFont('helvetica','bold');doc.setTextColor(k.c[0],k.c[1],k.c[2]);
+      doc.text(k.v,bx+boxW/2,y+14,{align:'center'});
+    });
+    y+=24;
 
-    // ── Finding rows ──────────────────────────────────────────
-    var findingRows=rptFindings.length===0
-      ? '<tr><td colspan="6" style="text-align:center;color:#6B7280;padding:20px">No findings — all invoices passed audit checks</td></tr>'
-      : rptFindings.map(function(fd,i){
-          var sc=sevColor[fd.sev]||'#374151';
-          var bg=i%2===0?'#fff':'#F9FAFB';
-          return '<tr style="background:'+bg+'"><td><span style="background:'+sc+';color:#fff;border-radius:3px;padding:2px 7px;font-size:10px;font-weight:700;white-space:nowrap">'+fd.sev+'</span></td>'
-            +'<td style="font-weight:600;font-size:11px">'+fd.type+'</td>'
-            +'<td style="font-size:11px">'+fd.vendor+'</td>'
-            +'<td style="font-size:11px;color:#6B7280">'+fd.file+'</td>'
-            +'<td style="font-weight:700;color:#991B1B;font-family:monospace;white-space:nowrap">'+(fd.over>0?'\u20B9'+fd.over.toLocaleString('en-IN',{minimumFractionDigits:2}):'—')+'</td>'
-            +'<td style="font-size:10px;color:#374151">'+fd.desc+' <span style="color:#1D4ED8">'+fd.action+'</span></td>'
-            +'</tr>';
-        }).join('');
+    // ── AI Summary Section ────────────────────────────────────────
+    if(rptFindings.length>0){
+      doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(10,13,20);
+      doc.text('Audit Findings ('+rptFindings.length+')',margin,y);
+      doc.setDrawColor(245,158,11);doc.setLineWidth(0.5);
+      doc.line(margin,y+2,pageW-margin,y+2);
+      y+=10;
 
-    // ── Invoice rows ──────────────────────────────────────────
-    var invoiceRows=filtered.map(function(f,i){
-      function gf(name){var fx=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:'\u2014';}
-      var bg=i%2===0?'#fff':'#F9FAFB';
-      return '<tr style="background:'+bg+'"><td>'+gf('Invoice Number')+'</td><td>'+gf('Invoice Date')+'</td><td>'+gf('Vendor Name')+'</td><td style="font-family:monospace;font-size:10px">'+gf('Vendor GSTIN')+'</td><td>'+gf('HSN / SAC Code')+'</td><td>'+gf('Taxable Amount')+'</td><td>'+gf('CGST')+'</td><td>'+gf('SGST')+'</td><td>'+gf('IGST')+'</td><td style="font-weight:700">'+gf('Invoice Total')+'</td></tr>';
-    }).join('');
+      var sevColor={CRITICAL:[153,27,27],HIGH:[146,64,14],MEDIUM:[30,64,188],LOW:[6,95,70]};
+      rptFindings.forEach(function(fd,idx){
+        // Check if we need a new page
+        if(y>250){doc.addPage();y=margin;}
+        var sc=sevColor[fd.sev]||[55,65,81];
+        // Severity badge
+        doc.setFillColor(sc[0],sc[1],sc[2]);
+        doc.roundedRect(margin,y,18,6,1,1,'F');
+        doc.setFontSize(6);doc.setFont('helvetica','bold');doc.setTextColor(255,255,255);
+        doc.text(fd.sev,margin+9,y+4,{align:'center'});
+        // Type label
+        doc.setFillColor(240,240,240);doc.roundedRect(margin+20,y,30,6,1,1,'F');
+        doc.setTextColor(60,60,60);doc.text(fd.type,margin+35,y+4,{align:'center'});
+        // Overcharge
+        if(fd.over>0){
+          doc.setFillColor(254,226,226);doc.roundedRect(margin+52,y,45,6,1,1,'F');
+          doc.setTextColor(153,27,27);
+          doc.text('₹'+fd.over.toLocaleString('en-IN',{minimumFractionDigits:2})+' overcharge',margin+74,y+4,{align:'center'});
+        }
+        y+=9;
+        // Vendor + file
+        doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(10,13,20);
+        doc.text(fd.vendor+' · '+fd.file,margin,y);y+=5;
+        // Description
+        doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(80,80,80);
+        var descLines=doc.splitTextToSize(fd.desc,pageW-margin*2);
+        doc.text(descLines,margin,y);y+=descLines.length*4+2;
+        // Action box
+        doc.setFillColor(255,251,235);doc.setDrawColor(245,158,11);doc.setLineWidth(0.3);
+        var actionLines=doc.splitTextToSize('Action: '+fd.action,pageW-margin*2-8);
+        doc.roundedRect(margin,y,pageW-margin*2,actionLines.length*4+6,1,1,'FD');
+        doc.setFontSize(7.5);doc.setFont('helvetica','bold');doc.setTextColor(146,64,14);
+        doc.text(actionLines,margin+4,y+5);
+        y+=actionLines.length*4+10;
+        // Divider
+        doc.setDrawColor(230,230,230);doc.setLineWidth(0.2);
+        doc.line(margin,y-4,pageW-margin,y-4);
+      });
+    } else {
+      doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(16,185,129);
+      doc.text('✓ No findings — all invoices passed all audit checks',margin,y);
+      y+=10;
+    }
 
-    var html='<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>AuditIQ Audit Report</title><style>'
-      +'*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;padding:28px 36px;color:#111;font-size:12px}'
-      +'.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #0A0D14;margin-bottom:20px}'
-      +'.logo{font-size:22px;font-weight:900;color:#0A0D14;letter-spacing:-1px}.logo span{color:#F59E0B}'
-      +'.hdr-right{text-align:right;font-size:10px;color:#6B7280}'
-      +'.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}'
-      +'.kpi{border:1px solid #E5E7EB;border-radius:6px;padding:12px 14px}'
-      +'.kpi .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#9CA3AF;margin-bottom:4px}'
-      +'.kpi .val{font-size:18px;font-weight:800;font-family:monospace}'
-      +'.kpi .sub{font-size:10px;color:#6B7280;margin-top:2px}'
-      +'.sec-title{font-size:13px;font-weight:700;margin:22px 0 10px;padding-bottom:5px;border-bottom:2px solid #F59E0B}'
-      +'table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px}'
-      +'th{background:#0A0D14;color:#fff;padding:8px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.5px;font-weight:700}'
-      +'td{padding:7px 10px;border-bottom:1px solid #F3F4F6;vertical-align:top}'
-      +'.footer{margin-top:24px;padding-top:10px;border-top:1px solid #E5E7EB;font-size:10px;color:#9CA3AF;display:flex;justify-content:space-between}'
-      +'@media print{@page{margin:1.5cm}body{padding:0}.no-print{display:none}}'
-      +'</style></head><body>'
-      // Header
-      +'<div class="hdr">'
-      +'<div><div class="logo">Audit<span>IQ</span></div><div style="font-size:11px;color:#6B7280;margin-top:2px">AI Invoice Auditor \u2014 Audit Report</div></div>'
-      +'<div class="hdr-right"><b>Generated: '+date+'</b><br>Scope: '+label+'<br>'+filtered.length+' invoice'+(filtered.length!==1?'s':'')+' audited</div>'
-      +'</div>'
-      // KPIs
-      +'<div class="kpis">'
-      +'<div class="kpi"><div class="lbl">Total Billed</div><div class="val">\u20B9'+totalBilled.toLocaleString('en-IN',{minimumFractionDigits:2})+'</div><div class="sub">'+filtered.length+' approved invoices</div></div>'
-      +'<div class="kpi" style="border-color:'+(totalOver>0?'#EF4444':'#10B981')+';background:'+(totalOver>0?'#FEF2F2':'#F0FDF4')+'"><div class="lbl">Total Overcharge</div><div class="val" style="color:'+(totalOver>0?'#DC2626':'#059669')+'">'+(totalOver>0?'\u20B9'+totalOver.toLocaleString('en-IN',{minimumFractionDigits:2}):'None')+'</div><div class="sub">'+(rptFindings.length>0?rptFindings.length+' finding'+(rptFindings.length!==1?'s':''):'Clean audit')+'</div></div>'
-      +'<div class="kpi" style="border-color:#10B981"><div class="lbl">Correct Amount</div><div class="val" style="color:#059669">\u20B9'+correctAmt.toLocaleString('en-IN',{minimumFractionDigits:2})+'</div><div class="sub">Amount you should pay</div></div>'
-      +'<div class="kpi"><div class="lbl">Findings</div><div class="val">'+rptFindings.length+'</div><div class="sub">'+(rptFindings.filter(function(f){return f.sev==='CRITICAL';}).length)+' critical \u2014 '+(rptFindings.filter(function(f){return f.sev==='HIGH';}).length)+' high</div></div>'
-      +'</div>'
-      // Findings
-      +'<div class="sec-title">Audit Findings'+(rptFindings.length>0?' ('+rptFindings.length+')':'')+'</div>'
-      +'<table><thead><tr><th>Severity</th><th>Type</th><th>Vendor</th><th>File</th><th>Overcharge</th><th>Finding &amp; Recommended Action</th></tr></thead><tbody>'+findingRows+'</tbody></table>'
-      // Invoices
-      +'<div class="sec-title">Invoice Summary</div>'
-      +'<table><thead><tr><th>Invoice No.</th><th>Date</th><th>Vendor</th><th>GSTIN</th><th>HSN/SAC</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr></thead><tbody>'+invoiceRows+'</tbody></table>'
-      // Footer
-      +'<div class="footer"><span>AuditIQ \u2014 AI Invoice Auditor \u2014 CONFIDENTIAL</span><span>'+date+'</span></div>'
-      +'</body></html>';
+    // ── Invoice Summary Table ────────────────────────────────────
+    if(y>230){doc.addPage();y=margin;}
+    doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(10,13,20);
+    doc.text('Invoice Summary',margin,y);
+    doc.setDrawColor(245,158,11);doc.setLineWidth(0.5);
+    doc.line(margin,y+2,pageW-margin,y+2);
+    y+=6;
 
-    // Download as self-contained HTML file that opens print dialog on load
-    var printHtml = html.replace('</body>', '<script>window.onload=function(){window.print();}<\/script></body>');
-    var blob = new Blob([printHtml], {type: 'text/html;charset=utf-8'});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'AuditIQ_Report_' + new Date().toISOString().slice(0,10) + '.html';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function(){ URL.revokeObjectURL(url); document.body.removeChild(a); }, 1000);
+    var tableRows=filtered.map(function(f){
+      function gf(name){var fx=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:'—';}
+      return [gf('Invoice Number'),gf('Invoice Date'),gf('Vendor Name').substring(0,20),gf('Taxable Amount'),gf('Invoice Total')];
+    });
+
+    doc.autoTable({
+      startY:y,
+      head:[['Invoice No.','Date','Vendor','Taxable','Total']],
+      body:tableRows,
+      margin:{left:margin,right:margin},
+      headStyles:{fillColor:[10,13,20],textColor:[255,255,255],fontSize:7,fontStyle:'bold'},
+      bodyStyles:{fontSize:7,textColor:[40,40,40]},
+      alternateRowStyles:{fillColor:[249,250,251]},
+      columnStyles:{0:{cellWidth:30},1:{cellWidth:22},2:{cellWidth:55},3:{cellWidth:28},4:{cellWidth:28}},
+    });
+
+    // ── Footer ───────────────────────────────────────────────────
+    var pgCount=doc.internal.getNumberOfPages();
+    for(var pg=1;pg<=pgCount;pg++){
+      doc.setPage(pg);
+      doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(160,160,160);
+      doc.text('AuditIQ — AI Invoice Auditor — CONFIDENTIAL',margin,doc.internal.pageSize.getHeight()-8);
+      doc.text('Page '+pg+' of '+pgCount,pageW-margin,doc.internal.pageSize.getHeight()-8,{align:'right'});
+    }
+
+    doc.save('AuditIQ_Report_'+new Date().toISOString().slice(0,10)+'.pdf');
   }
 
   function generate(){
@@ -1673,7 +1761,22 @@ function Reports(props){
           h('div',{style:{fontSize:18,fontWeight:800,marginBottom:4}},'Invoice Audit Report'),
           h('div',{style:{fontSize:12,color:C.muted}},(scope==='VENDOR'&&vendor?vendor:'All Vendors')+' \u00B7 '+filtered.length+' invoices')
         ),
-        h('div',{style:{width:36,height:36,background:'linear-gradient(135deg,#F59E0B,#EF4444)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:900,color:'#0A0D14'}},'A')
+        h('div',{style:{width:36,height:36,flexShrink:0}},
+          h('svg',{width:36,height:36,viewBox:'0 0 36 36',fill:'none'},
+            h('defs',null,
+              h('linearGradient',{id:'lgRpt',x1:'0%',y1:'0%',x2:'100%',y2:'100%'},
+                h('stop',{offset:'0%',stopColor:'#0EA5E9'}),h('stop',{offset:'100%',stopColor:'#8B5CF6'}))),
+            h('rect',{width:36,height:36,rx:9,fill:'#0A0D1A'}),
+            h('rect',{x:0.75,y:0.75,width:34.5,height:34.5,rx:8.5,stroke:'url(#lgRpt)',strokeWidth:1.5,fill:'none',opacity:'0.6'}),
+            h('rect',{x:8,y:9,width:12,height:15,rx:1.5,stroke:'#38BDF8',strokeWidth:1,fill:'none',opacity:'0.7'}),
+            h('line',{x1:10,y1:13,x2:18,y2:13,stroke:'#38BDF8',strokeWidth:1,opacity:'0.9',strokeLinecap:'round'}),
+            h('line',{x1:10,y1:15.5,x2:16,y2:15.5,stroke:'#818CF8',strokeWidth:1,opacity:'0.7',strokeLinecap:'round'}),
+            h('line',{x1:10,y1:18,x2:18,y2:18,stroke:'#818CF8',strokeWidth:1,opacity:'0.6',strokeLinecap:'round'}),
+            h('circle',{cx:22,cy:20,r:6,stroke:'#818CF8',strokeWidth:1.6,fill:'none',opacity:'0.9'}),
+            h('path',{d:'M18.8 20 L21 22.2 L25.2 17.8',stroke:'#34D399',strokeWidth:1.6,strokeLinecap:'round',strokeLinejoin:'round',fill:'none'}),
+            h('line',{x1:26.5,y1:24.5,x2:29,y2:27,stroke:'#818CF8',strokeWidth:1.8,strokeLinecap:'round'})
+          )
+        )
       ),
       generated
         ? h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
@@ -1943,6 +2046,178 @@ function Dashboard(props){
                 );
               })
             )
+      )
+    ):null,
+
+    // ── PREDICTIVE ANALYTICS ──────────────────────────────────
+    approved.length>=2?h('div',{style:{display:'flex',flexDirection:'column',gap:4,marginTop:2}},
+      h('div',{style:{fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'📈 Predictive Analytics'),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}},
+
+        // ── Chart 1: Spend Trend + Forecast ──────────────────
+        (function(){
+          // Parse invoice dates and totals
+          var months={};
+          approved.forEach(function(f){
+            var dt=getField(f.extraction,'Invoice Date');
+            var tot=parseAmt(getField(f.extraction,'Invoice Total'));
+            if(!dt||!tot)return;
+            // Try to parse month from date strings like "15-Mar-2024", "2024-03-15", "March 2024"
+            var m=dt.match(/(\d{4})[\/\-](\d{1,2})/)||dt.match(/(\w+)\s+(\d{4})/)||dt.match(/(\d{1,2})[\/\-](\w+)[\/\-](\d{4})/);
+            var key=null;
+            if(m){
+              var monthNames=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+              if(m[2]&&!isNaN(m[2])){key=m[1]+'-'+String(m[2]).padStart(2,'0');}
+              else if(m[2]){var mi=monthNames.indexOf(m[2].toLowerCase().slice(0,3));if(mi>=0)key=m[1]+'-'+String(mi+1).padStart(2,'0');}
+              else if(m[3]){var mi2=monthNames.indexOf(m[2].toLowerCase().slice(0,3));if(mi2>=0)key=m[3]+'-'+String(mi2+1).padStart(2,'0');}
+            }
+            if(!key){var now=new Date();key=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');}
+            months[key]=(months[key]||0)+tot;
+          });
+          var keys=Object.keys(months).sort().slice(-6);
+          if(!keys.length)return null;
+          var vals=keys.map(function(k){return months[k];});
+          var maxV=Math.max.apply(null,vals)||1;
+          // Simple linear forecast for next 2 months
+          var n=vals.length;
+          var sumX=0,sumY=0,sumXY=0,sumX2=0;
+          vals.forEach(function(v,i){sumX+=i;sumY+=v;sumXY+=i*v;sumX2+=i*i;});
+          var slope=n>1?(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX):0;
+          var intercept=(sumY-slope*sumX)/n;
+          var f1=Math.max(0,intercept+slope*n);
+          var f2=Math.max(0,intercept+slope*(n+1));
+          var allVals=vals.concat([f1,f2]);
+          var maxAll=Math.max.apply(null,allVals)||1;
+          var W=280,H=90,pad=6;
+          var barW=Math.floor((W-pad*2)/(allVals.length+1));
+          var fmt2=function(v){return v>=1e7?'₹'+(v/1e7).toFixed(1)+'Cr':v>=1e5?'₹'+(v/1e5).toFixed(1)+'L':'₹'+(v/1000).toFixed(0)+'K';};
+          var allLabels=keys.concat(['F+1','F+2']);
+          var bars=allVals.map(function(v,i){
+            var x=pad+i*(barW+2);
+            var bh=Math.round((v/maxAll)*(H-20));
+            var isForecast=i>=keys.length;
+            return h('g',{key:i},
+              h('rect',{x:x,y:H-20-bh,width:barW,height:bh,rx:2,
+                fill:isForecast?C.amber+'60':C.blue,
+                stroke:isForecast?C.amber:'none',strokeWidth:isForecast?1:0,
+                strokeDasharray:isForecast?'3,2':'none'}),
+              h('text',{x:x+barW/2,y:H-8,textAnchor:'middle',fontSize:7,fill:C.faint},allLabels[i].replace(/\d{4}-/,'')),
+              bh>12?h('text',{x:x+barW/2,y:H-22-bh,textAnchor:'middle',fontSize:6,fill:isForecast?C.amber:C.muted},fmt2(v)):null
+            );
+          });
+          return h('div',{className:'card'},
+            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Spend Trend & Forecast'),
+            h('div',{style:{fontSize:10,color:C.faint,marginBottom:10}},'Actual spend + 2-month projection'),
+            h('svg',{width:'100%',viewBox:'0 0 '+W+' '+H,style:{overflow:'visible'}},
+              h('g',null,bars),
+              h('text',{x:W-pad,y:H-4,textAnchor:'end',fontSize:7,fill:C.amber+'aa'},'▨ Forecast')
+            )
+          );
+        })(),
+
+        // ── Chart 2: Overcharge Rate Trend ────────────────────
+        (function(){
+          if(!findings.length)return h('div',{className:'card'},
+            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Overcharge Risk Trend'),
+            h('div',{style:{fontSize:10,color:C.faint,marginBottom:8}},'% of billed amount flagged as overcharge'),
+            h('div',{style:{textAlign:'center',padding:'24px 0',fontSize:28}},'✅'),
+            h('div',{style:{textAlign:'center',fontSize:11,color:C.green}},'0% overcharge rate — clean audit')
+          );
+          var rate=totalBilled>0?((totalOvercharge/totalBilled)*100):0;
+          var byV2={};
+          findings.forEach(function(f){if(!byV2[f.vendorName])byV2[f.vendorName]=0;byV2[f.vendorName]+=(f.overchargeAmt||0);});
+          var vendList=Object.keys(byV2).map(function(n){return{n:n,v:byV2[n]};}).sort(function(a,b){return b.v-a.v;}).slice(0,4);
+          var maxV3=vendList.length?vendList[0].v:1;
+          var W2=260,H2=90;
+          // Donut for overcharge rate
+          var pct=Math.min(rate/100,1);
+          var r=30,cx=45,cy=H2/2;
+          var circ=2*Math.PI*r;
+          var dash=pct*circ;
+          var rateColor=rate>20?C.red:rate>10?C.amber:C.green;
+          return h('div',{className:'card'},
+            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Overcharge Risk'),
+            h('div',{style:{fontSize:10,color:C.faint,marginBottom:8}},'Rate vs vendor breakdown'),
+            h('svg',{width:'100%',viewBox:'0 0 '+W2+' '+H2},
+              // Donut
+              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:C.border,strokeWidth:8}),
+              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:rateColor,strokeWidth:8,
+                strokeDasharray:dash+' '+(circ-dash),
+                strokeLinecap:'round',
+                transform:'rotate(-90 '+cx+' '+cy+')'}),
+              h('text',{x:cx,y:cy-4,textAnchor:'middle',fontSize:13,fontWeight:'bold',fill:rateColor},rate.toFixed(1)+'%'),
+              h('text',{x:cx,y:cy+10,textAnchor:'middle',fontSize:7,fill:C.faint},'overcharge'),
+              // Vendor bars on right
+              h('g',{transform:'translate(95,8)'},
+                vendList.map(function(v,i){
+                  var bw=Math.round((v.v/maxV3)*130);
+                  var y2=i*20;
+                  var nm=v.n.length>14?v.n.slice(0,14)+'…':v.n;
+                  return h('g',{key:i},
+                    h('text',{x:0,y:y2+10,fontSize:7.5,fill:C.muted},nm),
+                    h('rect',{x:0,y:y2+13,width:bw,height:5,rx:2,fill:C.red+'80'}),
+                    h('text',{x:bw+3,y:y2+18,fontSize:7,fill:C.red},'₹'+(v.v/1000).toFixed(0)+'K')
+                  );
+                })
+              )
+            )
+          );
+        })(),
+
+        // ── Chart 3: Audit Health Score ───────────────────────
+        (function(){
+          var total=approved.length||1;
+          var clean=total-findings.length;
+          var score=Math.round((clean/total)*100);
+          var scoreColor=score>=90?C.green:score>=70?C.amber:C.red;
+          var typeCount={};
+          findings.forEach(function(f){typeCount[f.type]=(typeCount[f.type]||0)+1;});
+          var topTypes=Object.keys(typeCount).sort(function(a,b){return typeCount[b]-typeCount[a];}).slice(0,4);
+          var typeLabels2={CALC_ERROR:'Calc Errors',GST_RATE:'GST Rate',FRAUD:'Fraud',PRICING:'Pricing',SURCHARGE:'Surcharge',DUPLICATE:'Duplicate',COMPLIANCE:'Compliance'};
+          var W3=260,H3=90,cx3=42,cy3=H3/2,r3=32;
+          var segments=[];
+          var startAngle=-Math.PI/2;
+          var typeColorsArr=[C.red,C.amber,C.blue,C.purple,'#06B6D4',C.green];
+          var allTypes=Object.keys(typeCount);
+          var totalFindings=findings.length||1;
+          allTypes.forEach(function(t,ti){
+            var ang=(typeCount[t]/totalFindings)*2*Math.PI;
+            var x1=cx3+r3*Math.cos(startAngle);var y1=cy3+r3*Math.sin(startAngle);
+            var x2=cx3+r3*Math.cos(startAngle+ang);var y2=cy3+r3*Math.sin(startAngle+ang);
+            var lg=ang>Math.PI?1:0;
+            var col=typeColorsArr[ti%typeColorsArr.length];
+            if(allTypes.length===1){
+              segments.push(h('circle',{key:t,cx:cx3,cy:cy3,r:r3,fill:'none',stroke:col,strokeWidth:7}));
+            } else {
+              segments.push(h('path',{key:t,d:'M '+cx3+' '+cy3+' L '+x1+' '+y1+' A '+r3+' '+r3+' 0 '+lg+' 1 '+x2+' '+y2+' Z',fill:col+'cc',stroke:C.panel,strokeWidth:1}));
+            }
+            startAngle+=ang;
+          });
+          return h('div',{className:'card'},
+            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Audit Health Score'),
+            h('div',{style:{fontSize:10,color:C.faint,marginBottom:8}},'Invoice pass rate + finding breakdown'),
+            h('svg',{width:'100%',viewBox:'0 0 '+W3+' '+H3},
+              findings.length===0
+                ? h('g',null,
+                    h('circle',{cx:cx3,cy:cy3,r:r3,fill:C.green+'20',stroke:C.green,strokeWidth:2}),
+                    h('text',{x:cx3,y:cy3+1,textAnchor:'middle',dominantBaseline:'middle',fontSize:18,fill:C.green},'✓')
+                  )
+                : h('g',null,segments),
+              h('text',{x:cx3,y:cy3-4,textAnchor:'middle',fontSize:14,fontWeight:'bold',fill:scoreColor},score+'%'),
+              h('text',{x:cx3,y:cy3+10,textAnchor:'middle',fontSize:7,fill:C.faint},'health'),
+              h('g',{transform:'translate(92,6)'},
+                topTypes.map(function(t,i){
+                  var col2=typeColorsArr[allTypes.indexOf(t)%typeColorsArr.length];
+                  return h('g',{key:t},
+                    h('rect',{x:0,y:i*18,width:7,height:7,rx:2,fill:col2}),
+                    h('text',{x:10,y:i*18+7,fontSize:8,fill:C.muted},(typeLabels2[t]||t)+' ('+typeCount[t]+')'),
+                    h('text',{x:155,y:i*18+7,fontSize:8,fontWeight:'bold',fill:col2},Math.round((typeCount[t]/totalFindings)*100)+'%')
+                  );
+                })
+              )
+            )
+          );
+        })()
       )
     ):null,
 
@@ -2228,6 +2503,10 @@ var NAV=[
 function App(){
   var pageState=useState('dashboard');var page=pageState[0];var setPage=pageState[1];
   var pkState=useState(0);var pk=pkState[0];var setPk=pkState[1];
+  var darkState=useState(true);var dark=darkState[0];var setDark=darkState[1];
+  // Rebuild C and apply body class whenever dark changes
+  C=makeTheme(dark);
+  if(typeof document!=='undefined'){document.body.className=dark?'':'light';}
   var uploadedFilesState=useState([]);var uploadedFiles=uploadedFilesState[0];var setUploadedFiles=uploadedFilesState[1];
   var vendorMasterState=useState([]);var vendorMaster=vendorMasterState[0];var setVendorMaster=vendorMasterState[1];
   var configState=useState(DEFAULT_CONFIG);var config=configState[0];var setConfig=configState[1];
@@ -2248,9 +2527,49 @@ function App(){
     h('div',{style:{width:210,background:C.panel,borderRight:'1px solid '+C.border,display:'flex',flexDirection:'column',flexShrink:0}},
       h('div',{style:{padding:'20px 18px 16px',borderBottom:'1px solid '+C.border}},
         h('div',{style:{display:'flex',alignItems:'center',gap:10}},
-          h('div',{style:{width:30,height:30,background:'linear-gradient(135deg,#F59E0B,#EF4444)',borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:900,color:'#0A0D14',flexShrink:0}},'A'),
+          h('svg',{width:36,height:36,viewBox:'0 0 36 36',fill:'none',style:{flexShrink:0}},
+            h('defs',null,
+              h('linearGradient',{id:'lgMain',x1:'0%',y1:'0%',x2:'100%',y2:'100%'},
+                h('stop',{offset:'0%',stopColor:'#0EA5E9'}),
+                h('stop',{offset:'50%',stopColor:'#6366F1'}),
+                h('stop',{offset:'100%',stopColor:'#8B5CF6'})
+              ),
+              h('linearGradient',{id:'lgGlow',x1:'0%',y1:'0%',x2:'100%',y2:'100%'},
+                h('stop',{offset:'0%',stopColor:'#38BDF8'}),
+                h('stop',{offset:'100%',stopColor:'#A78BFA'})
+              ),
+              h('filter',{id:'glow'},
+                h('feGaussianBlur',{stdDeviation:'1.2',result:'blur'}),
+                h('feMerge',null,h('feMergeNode',{in:'blur'}),h('feMergeNode',{in:'SourceGraphic'}))
+              )
+            ),
+            // Outer rounded square bg with gradient
+            h('rect',{width:36,height:36,rx:9,fill:'#0A0D1A'}),
+            h('rect',{width:36,height:36,rx:9,fill:'url(#lgMain)',opacity:'0.15'}),
+            h('rect',{x:0.75,y:0.75,width:34.5,height:34.5,rx:8.5,stroke:'url(#lgMain)',strokeWidth:1.5,fill:'none',opacity:'0.6'}),
+            // Document shape (invoice) — left side
+            h('rect',{x:7,y:8,width:13,height:16,rx:2,fill:'url(#lgMain)',opacity:'0.25'}),
+            h('rect',{x:7,y:8,width:13,height:16,rx:2,stroke:'url(#lgGlow)',strokeWidth:1,fill:'none',opacity:'0.7'}),
+            // Document lines (invoice rows)
+            h('line',{x1:9.5,y1:12,x2:17.5,y2:12,stroke:'#38BDF8',strokeWidth:1,opacity:'0.9',strokeLinecap:'round'}),
+            h('line',{x1:9.5,y1:14.5,x2:15,y2:14.5,stroke:'#818CF8',strokeWidth:1,opacity:'0.7',strokeLinecap:'round'}),
+            h('line',{x1:9.5,y1:17,x2:17.5,y2:17,stroke:'#818CF8',strokeWidth:1,opacity:'0.7',strokeLinecap:'round'}),
+            h('line',{x1:9.5,y1:19.5,x2:14,y2:19.5,stroke:'#38BDF8',strokeWidth:1,opacity:'0.5',strokeLinecap:'round'}),
+            // Magnifying glass circle — overlapping the doc
+            h('circle',{cx:21,cy:19,r:6.5,stroke:'url(#lgGlow)',strokeWidth:1.8,fill:'#0A0D1A',opacity:'0.95'}),
+            h('circle',{cx:21,cy:19,r:6.5,fill:'url(#lgMain)',opacity:'0.1'}),
+            // AI pulse / check inside magnifier
+            h('path',{d:'M17.5 19 L19.5 21.5 L24.5 16.5',stroke:'#34D399',strokeWidth:1.8,strokeLinecap:'round',strokeLinejoin:'round',fill:'none',filter:'url(#glow)'}),
+            // Magnifier handle
+            h('line',{x1:25.8,y1:23.8,x2:28.5,y2:26.5,stroke:'url(#lgGlow)',strokeWidth:2,strokeLinecap:'round'}),
+            // Tiny circuit dots — top right corner accent
+            h('circle',{cx:28,cy:8,r:1.2,fill:'#38BDF8',opacity:'0.8'}),
+            h('circle',{cx:28,cy:8,r:0.5,fill:'#fff',opacity:'0.9'}),
+            h('line',{x1:26.5,y1:8,x2:24.5,y2:8,stroke:'#6366F1',strokeWidth:1,opacity:'0.6',strokeLinecap:'round'}),
+            h('line',{x1:28,y1:9.5,x2:28,y2:11.5,stroke:'#6366F1',strokeWidth:1,opacity:'0.6',strokeLinecap:'round'})
+          ),
           h('div',null,
-            h('div',{style:{fontSize:14,fontWeight:700,letterSpacing:-.3}},'AuditIQ'),
+            h('div',{style:{fontSize:14,fontWeight:800,letterSpacing:-.4,background:'linear-gradient(90deg,#38BDF8,#818CF8)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}},'AuditIQ'),
             h('div',{style:{fontSize:9,color:C.faint,letterSpacing:1.5,textTransform:'uppercase',marginTop:1}},'AI Invoice Auditor')
           )
         )
@@ -2294,6 +2613,14 @@ function App(){
         ),
         h('div',{style:{display:'flex',alignItems:'center',gap:8}},
           auditBadge>0?h('div',{onClick:function(){go('audit');},style:{fontSize:11,color:C.amber,background:C.amber+'10',border:'1px solid '+C.amber+'25',borderRadius:5,padding:'4px 10px',cursor:'pointer'}},'\u26A0 '+auditBadge+' need review'):null,
+          h('button',{onClick:function(){setDark(function(d){return !d;});},
+            title:dark?'Switch to Light Mode':'Switch to Dark Mode',
+            style:{background:'transparent',border:'1px solid '+C.border,borderRadius:7,padding:'5px 9px',cursor:'pointer',color:C.muted,display:'flex',alignItems:'center',gap:5,fontSize:11,transition:'all .15s'}},
+            dark
+              ? h('svg',{width:14,height:14,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2},h('circle',{cx:12,cy:12,r:5}),h('line',{x1:12,y1:1,x2:12,y2:3}),h('line',{x1:12,y1:21,x2:12,y2:23}),h('line',{x1:4.22,y1:4.22,x2:5.64,y2:5.64}),h('line',{x1:18.36,y1:18.36,x2:19.78,y2:19.78}),h('line',{x1:1,y1:12,x2:3,y2:12}),h('line',{x1:21,y1:12,x2:23,y2:12}),h('line',{x1:4.22,y1:19.78,x2:5.64,y2:18.36}),h('line',{x1:18.36,y1:5.64,x2:19.78,y2:4.22}))
+              : h('svg',{width:14,height:14,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2},h('path',{d:'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'})),
+            dark?'Light':'Dark'
+          ),
           h('div',{style:{fontSize:11,color:IS_LOCAL?C.amber:(aiEngine==='groq'?C.purple:C.green),background:(IS_LOCAL?C.amber:(aiEngine==='groq'?C.purple:C.green))+'10',border:'1px solid '+(IS_LOCAL?C.amber:(aiEngine==='groq'?C.purple:C.green))+'25',borderRadius:5,padding:'4px 10px',display:'flex',alignItems:'center',gap:5}},
             h('span',{style:{width:5,height:5,borderRadius:'50%',background:IS_LOCAL?C.amber:(aiEngine==='groq'?C.purple:C.green),display:'inline-block'}}),
             IS_LOCAL?'Local Mode':aiEngine==='groq'?'Groq (Fallback)':'Gemini AI'
