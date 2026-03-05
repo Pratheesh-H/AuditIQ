@@ -1493,147 +1493,601 @@ function Reports(props){
       document.head.appendChild(s1);
       return;
     }
-    try{
-      // ── Resolve all data directly — no closure dependencies ──────
-      var _cfg=props.config||{};
-      var _vm=props.vendorMaster||[];
-      var _uf=props.uploadedFiles||[];
-      var _approved=_uf.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
-      var _filtered=_approved.filter(function(f){
-        if(scope==='VENDOR'&&vendor){return(function(ex){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field==='Vendor Name'&&x.conf>0;});return fx?fx.value:null;})(f.extraction)===vendor;}
-        return true;
-      });
-      function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
-      function pAmt(v){if(!v)return 0;var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);if(!tokens)return 0;var best=0;tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});return best;}
-      var _totalBilled=_filtered.reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
+    // ── Show generating state ──────────────────────────────────────
+    setGenerating(true);
 
-      // ── Use AI audit findings (same source as Audit Findings page) ──
-      var _aiResults=props.aiResults||null;
-      var _aiFindings=_aiResults?(_aiResults.extras||[]):[];
-      // Map AI findings to PDF format, filtered to vendors in scope
-      var rptFindings=_aiFindings.filter(function(fd){
-        if(scope==='VENDOR'&&vendor){return (fd.vendorName||'').toLowerCase()===(vendor||'').toLowerCase();}
-        return true;
-      }).map(function(fd){
-        return {
-          type:fd.type||'FINDING',
-          sev:fd.severity||'MEDIUM',
-          vendor:fd.vendorName||'?',
-          file:fd.file||fd.ref||'',
-          over:fd.overchargeAmt||0,
-          desc:fd.desc||fd.plainEnglish||'',
-          action:fd.action||''
+    // ── If AI results exist, generate executive summary via Groq ──
+    var _aiResults=props.aiResults||null;
+    var _aiSummary=_aiResults?(_aiResults.summary||''):'';
+    var _aiFindings=_aiResults?(_aiResults.extras||[]):[];
+    var _cfg=props.config||{};
+    var _vm=props.vendorMaster||[];
+    var _uf=props.uploadedFiles||[];
+    var _profile=props.profile||null;
+    var _approved=_uf.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
+    var _filtered=_approved.filter(function(f){
+      if(scope==='VENDOR'&&vendor){
+        var fx=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field==='Vendor Name'&&x.conf>0;});
+        return fx?fx.value===vendor:false;
+      }
+      return true;
+    });
+    function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
+    function pAmt(v){if(!v)return 0;var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);if(!tokens)return 0;var best=0;tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});return best;}
+    function fmtINR(n){if(!n||isNaN(n))return '\u20B90';if(n>=10000000)return '\u20B9'+(n/10000000).toFixed(2)+'Cr';if(n>=100000)return '\u20B9'+(n/100000).toFixed(2)+'L';return '\u20B9'+Math.round(n).toLocaleString('en-IN');}
+
+    var _totalBilled=_filtered.reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
+    var _totalTaxable=_filtered.reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Taxable Amount'));},0);
+
+    // Map AI findings scoped to vendor if needed
+    var rptFindings=_aiFindings.filter(function(fd){
+      if(scope==='VENDOR'&&vendor){return (fd.vendorName||'').toLowerCase()===(vendor||'').toLowerCase();}
+      return true;
+    }).map(function(fd){
+      return {type:String(fd.type||'FINDING'),sev:String(fd.severity||'MEDIUM'),vendor:String(fd.vendorName||'?'),file:String(fd.file||fd.ref||''),over:fd.overchargeAmt||0,desc:String(fd.desc||fd.plainEnglish||''),action:String(fd.action||'')};
+    });
+    // Duplicate check
+    var invNos={};
+    _filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!invNos[n])invNos[n]=[];invNos[n].push(f);}});
+    Object.keys(invNos).forEach(function(n){
+      if(invNos[n].length>1){
+        var dA=invNos[n].reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
+        var sA=pAmt(gfx(invNos[n][0].extraction,'Invoice Total'));
+        var already=rptFindings.some(function(fd){return fd.type==='DUPLICATE'&&fd.desc&&fd.desc.includes(n);});
+        if(!already)rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(invNos[n][0].extraction,'Vendor Name')||'?',file:invNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,desc:'Invoice "'+n+'" appears '+invNos[n].length+' times.',action:'Block duplicates. Pay only once.'});
+      }
+    });
+
+    var totalOver=rptFindings.reduce(function(s,f){return s+(f.over||0);},0);
+    var overRate=_totalBilled>0?((totalOver/_totalBilled)*100).toFixed(1):'0.0';
+
+    // Vendor spend map
+    var vSpend={};
+    _filtered.forEach(function(f){var vn=gfx(f.extraction,'Vendor Name')||'Unknown';vSpend[vn]=(vSpend[vn]||0)+pAmt(gfx(f.extraction,'Invoice Total'));});
+    var vSpendList=Object.keys(vSpend).map(function(n){return {n:n,v:vSpend[n]};}).sort(function(a,b){return b.v-a.v;});
+    var maxVSpend=vSpendList.length?vSpendList[0].v:1;
+
+    // Severity counts
+    var sevCounts={CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
+    rptFindings.forEach(function(fd){var s=(fd.sev||'MEDIUM').toUpperCase();if(sevCounts[s]!==undefined)sevCounts[s]++;});
+
+    // Flagged invoice set
+    var flaggedFiles=new Set(rptFindings.map(function(fd){return fd.file;}));
+
+    function buildPDF(execSummary){
+      try{
+        var doc=new JsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+        var pw=doc.internal.pageSize.getWidth(); // 210
+        var ph=doc.internal.pageSize.getHeight(); // 297
+        var mg=14;
+        var y=0;
+        var dt=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
+
+        // ── COLOUR PALETTE ─────────────────────────────────────────
+        var COL={
+          navy:[13,27,42],    navyMid:[26,47,68],   navyLight:[30,64,96],
+          blue:[30,111,165],  blueLight:[74,144,196],
+          red:[192,57,43],    redLight:[253,236,234],redBorder:[245,183,177],
+          green:[26,122,74],  greenLight:[234,250,241],
+          amber:[183,121,15], amberLight:[255,253,240],amberBorder:[240,217,160],
+          text:[13,27,42],    textMid:[44,62,80],    textLight:[106,130,153],
+          border:[228,234,240], bg:[247,249,251],    white:[255,255,255],
+          grey:[238,242,246],
         };
-      });
-      // Always include duplicate invoice check (factual, instant)
-      var invNos={};
-      _filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!invNos[n])invNos[n]=[];invNos[n].push(f);}});
-      Object.keys(invNos).forEach(function(n){
-        if(invNos[n].length>1){
-          var dA=invNos[n].reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
-          var sA=pAmt(gfx(invNos[n][0].extraction,'Invoice Total'));
-          var alreadyIn=rptFindings.some(function(fd){return fd.type==='DUPLICATE'&&fd.desc&&fd.desc.includes(n);});
-          if(!alreadyIn)rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(invNos[n][0].extraction,'Vendor Name')||'?',file:invNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,desc:'Invoice "'+n+'" appears '+invNos[n].length+' times.',action:'Block duplicates. Pay only once.'});
+
+        function setFill(c){doc.setFillColor(c[0],c[1],c[2]);}
+        function setDraw(c){doc.setDrawColor(c[0],c[1],c[2]);}
+        function setTxt(c){doc.setTextColor(c[0],c[1],c[2]);}
+        function rect(x,y,w,h,style){doc.rect(x,y,w,h,style||'F');}
+        function rrect(x,y,w,h,r,style){doc.roundedRect(x,y,w,h,r,r,style||'F');}
+        function line(x1,y1,x2,y2){doc.line(x1,y1,x2,y2);}
+
+        function sectionHeader(title, yp){
+          // Left accent bar
+          setFill(COL.blue);rect(mg,yp,2,5);
+          doc.setFont('helvetica','bold');doc.setFontSize(10);setTxt(COL.navy);
+          doc.text(title,mg+5,yp+4);
+          setDraw(COL.border);doc.setLineWidth(0.3);
+          var tw=doc.getTextWidth(title);
+          line(mg+7+tw,yp+2,pw-mg,yp+2);
+          return yp+10;
         }
-      });
 
-      // ── Build PDF ───────────────────────────────────────────────
-      var doc=new JsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-      var pw=doc.internal.pageSize.getWidth();
-      var mg=14,y=mg;
+        function pageCheck(yp,need){
+          if(yp+need>ph-16){
+            addFooter(doc.internal.getNumberOfPages());
+            doc.addPage();
+            yp=drawSecondaryHeader()+4;
+          }
+          return yp;
+        }
 
-      // Header
-      doc.setFillColor(10,13,20);doc.rect(0,0,pw,28,'F');
-      doc.setFontSize(20);doc.setFont('helvetica','bold');
-      doc.setTextColor(14,165,233);doc.text('Audit',mg,18);
-      doc.setTextColor(139,92,246);doc.text('IQ',mg+26,18);
-      doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(180,180,180);
-      doc.text('AI Invoice Auditor - Confidential Audit Report',mg,24);
-      var dt=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
-      doc.text('Generated: '+dt,pw-mg,18,{align:'right'});
-      doc.text('Invoices: '+_filtered.length,pw-mg,24,{align:'right'});
-      y=36;
+        function drawSecondaryHeader(){
+          setFill(COL.navy);rect(0,0,pw,14);
+          doc.setFont('helvetica','bold');doc.setFontSize(11);
+          setTxt([232,244,253]);doc.text('Audit',mg,10);
+          setTxt(COL.blueLight);doc.text('IQ',mg+15,10);
+          doc.setFont('helvetica','normal');doc.setFontSize(7);
+          setTxt([255,255,255,0.4]);
+          doc.setTextColor(160,180,200);
+          doc.text('AI Invoice Auditor \u00B7 Confidential Audit Report \u00B7 Continued',mg+25,10);
+          // Accent gradient line
+          setFill(COL.blue);rect(0,14,pw*0.4,1.5);
+          setFill(COL.blueLight);rect(pw*0.4,14,pw*0.2,1.5);
+          setFill([247,249,251]);rect(pw*0.6,14,pw*0.4,1.5);
+          return 20;
+        }
 
-      // KPIs
-      var totalOver=rptFindings.reduce(function(s,f){return s+(f.over||0);},0);
-      var kpis=[
-        {l:'TOTAL BILLED',    v:'\u20B9'+_totalBilled.toLocaleString('en-IN',{minimumFractionDigits:2}), c:[59,130,246]},
-        {l:'OVERCHARGE',      v:totalOver>0?'\u20B9'+totalOver.toLocaleString('en-IN',{minimumFractionDigits:2}):'None', c:totalOver>0?[220,38,38]:[16,185,129]},
-        {l:'CORRECT AMOUNT',  v:'\u20B9'+(_totalBilled-totalOver).toLocaleString('en-IN',{minimumFractionDigits:2}), c:[16,185,129]},
-        {l:'FINDINGS',        v:String(rptFindings.length), c:[245,158,11]},
-      ];
-      var bw=(pw-mg*2-9)/4;
-      kpis.forEach(function(k,i){
-        var bx=mg+i*(bw+3);
-        doc.setDrawColor(220,220,220);doc.setFillColor(250,250,250);doc.roundedRect(bx,y,bw,18,2,2,'FD');
-        doc.setFontSize(6);doc.setFont('helvetica','normal');doc.setTextColor(120,120,120);doc.text(k.l,bx+bw/2,y+6,{align:'center'});
-        doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(k.c[0],k.c[1],k.c[2]);doc.text(k.v,bx+bw/2,y+13,{align:'center'});
-      });
-      y+=24;
+        function addFooter(pageNum){
+          var totalPages=doc.internal.getNumberOfPages();
+          doc.setPage(pageNum);
+          setFill(COL.bg);rect(0,ph-11,pw,11);
+          setDraw(COL.border);doc.setLineWidth(0.3);line(mg,ph-11,pw-mg,ph-11);
+          doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt(COL.textLight);
+          doc.text('AuditIQ \u00B7 Confidential Audit Report \u00B7 Do Not Distribute',mg,ph-5);
+          doc.text('Page '+pageNum+' of '+totalPages,pw-mg,ph-5,{align:'right'});
+        }
 
-      // AI audit source note
-      if(_aiResults){
-        doc.setFontSize(7);doc.setFont('helvetica','italic');doc.setTextColor(99,102,241);
-        doc.text('\u2713 Findings sourced from AI Audit (Groq) — same data as Audit Findings page',mg,y);y+=8;
-      } else {
-        doc.setFontSize(7);doc.setFont('helvetica','italic');doc.setTextColor(180,80,80);
-        doc.text('\u26A0 AI Audit not run — no AI findings available. Run AI Audit on the Audit Findings page first.',mg,y);y+=8;
-      }
-      // Findings
-      if(rptFindings.length>0){
-        doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(10,13,20);
-        doc.text('Audit Findings ('+rptFindings.length+')',mg,y);
-        doc.setDrawColor(245,158,11);doc.setLineWidth(0.5);doc.line(mg,y+2,pw-mg,y+2);y+=10;
-        var sc={CRITICAL:[153,27,27],HIGH:[146,64,14],MEDIUM:[30,64,188],LOW:[6,95,70]};
-        rptFindings.forEach(function(fd){
-          if(y>255){doc.addPage();y=mg;}
-          var c=sc[fd.sev]||[55,65,81];
-          doc.setFillColor(c[0],c[1],c[2]);doc.roundedRect(mg,y,18,6,1,1,'F');
-          doc.setFontSize(6);doc.setFont('helvetica','bold');doc.setTextColor(255,255,255);doc.text(fd.sev,mg+9,y+4,{align:'center'});
-          doc.setFillColor(240,240,240);doc.roundedRect(mg+20,y,30,6,1,1,'F');doc.setTextColor(60,60,60);doc.text(fd.type,mg+35,y+4,{align:'center'});
-          if(fd.over>0){doc.setFillColor(254,226,226);doc.roundedRect(mg+52,y,50,6,1,1,'F');doc.setTextColor(153,27,27);doc.text('\u20B9'+fd.over.toLocaleString('en-IN')+' overcharge',mg+77,y+4,{align:'center'});}
-          y+=9;
-          doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(10,13,20);doc.text((fd.vendor||'?')+' - '+fd.file,mg,y);y+=5;
-          doc.setFontSize(7.5);doc.setFont('helvetica','normal');doc.setTextColor(80,80,80);
-          var dl=doc.splitTextToSize(fd.desc,pw-mg*2);doc.text(dl,mg,y);y+=dl.length*4+2;
-          doc.setFillColor(255,251,235);doc.setDrawColor(245,158,11);doc.setLineWidth(0.3);
-          var al=doc.splitTextToSize('Action: '+fd.action,pw-mg*2-6);
-          doc.roundedRect(mg,y,pw-mg*2,al.length*4+6,1,1,'FD');
-          doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(146,64,14);doc.text(al,mg+3,y+4.5);
-          y+=al.length*4+10;
+        // ════════════════════════════════════════════════
+        // PAGE 1
+        // ════════════════════════════════════════════════
+
+        // ── HEADER ──────────────────────────────────────
+        setFill(COL.navy);rect(0,0,pw,32);
+        // Grid texture
+        doc.setLineWidth(0.1);setDraw([255,255,255]);doc.setGState&&doc.setGState(new doc.GState({opacity:0.03}));
+        for(var gx=0;gx<pw;gx+=8){line(gx,0,gx,32);}
+        for(var gy=0;gy<32;gy+=8){line(0,gy,pw,gy);}
+        if(doc.setGState){doc.setGState(new doc.GState({opacity:1}));}
+        doc.setLineWidth(0.3);
+
+        // Logo
+        doc.setFont('helvetica','bold');doc.setFontSize(22);
+        setTxt([232,244,253]);doc.text('Audit',mg,21);
+        setTxt(COL.blueLight);doc.text('IQ',mg+27,21);
+        doc.setFont('helvetica','normal');doc.setFontSize(7.5);
+        setTxt([180,200,215]);doc.text('AI Invoice Auditor  \u00B7  Confidential Audit Report',mg,27);
+
+        // AI chip
+        var chipX=mg;var chipY=30;
+        setFill([74,144,196,0.12]);
+        setDraw(COL.blueLight);doc.setLineWidth(0.4);
+        // small dot + text
+        setFill(COL.blueLight);rrect(chipX,chipY-3.5,3,3,1);
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.blueLight);
+        doc.text('AI Audit \u00B7 Groq llama-3.3-70b',chipX+4.5,chipY-0.8);
+
+        // Date/inv right
+        doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt([160,180,200]);
+        doc.text('Date Generated',pw-mg,17,{align:'right'});
+        doc.setFont('helvetica','bold');doc.setFontSize(12);setTxt([232,244,253]);
+        doc.text(dt,pw-mg,24,{align:'right'});
+        doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt([160,180,200]);
+        doc.text(_filtered.length+' invoices  \u00B7  '+(_filtered.length?'All Vendors':'No data'),pw-mg,29,{align:'right'});
+
+        // Accent gradient bar
+        setFill(COL.blue);rect(0,32,pw*0.4,2);
+        setFill(COL.blueLight);rect(pw*0.4,32,pw*0.2,2);
+        setFill([247,249,251]);rect(pw*0.6,32,pw*0.4,2);
+
+        // ── META ROW ────────────────────────────────────
+        setFill(COL.bg);rect(0,34,pw,14);
+        setDraw(COL.border);doc.setLineWidth(0.3);line(0,48,pw,48);
+        var metas=[
+          {l:'Prepared By',v:_profile?_profile.name:'—'},
+          {l:'Organisation',v:_profile?_profile.firm:'—'},
+          {l:'Audit Period',v:dt},
+          {l:'Report Scope',v:scope==='VENDOR'&&vendor?vendor:'All Vendors'},
+        ];
+        var mw=(pw-mg*2)/4;
+        metas.forEach(function(m,i){
+          var mx=mg+i*mw;
+          if(i>0){setDraw(COL.border);line(mx,36,mx,46);}
+          doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+          doc.text(m.l.toUpperCase(),mx+(i>0?4:0),40);
+          doc.setFont('helvetica','bold');doc.setFontSize(8.5);setTxt(COL.text);
+          doc.text(String(m.v||'—').slice(0,22),mx+(i>0?4:0),46);
         });
-      }else{
-        doc.setFontSize(10);doc.setFont('helvetica','bold');doc.setTextColor(16,185,129);
-        doc.text('\u2713 No findings - all invoices passed all checks',mg,y);y+=10;
-      }
 
-      // Table
-      if(y>230){doc.addPage();y=mg;}
-      doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(10,13,20);
-      doc.text('Invoice Summary',mg,y);
-      doc.setDrawColor(245,158,11);doc.setLineWidth(0.5);doc.line(mg,y+2,pw-mg,y+2);y+=8;
-      var cols=[30,22,55,28,28],hdrs=['Invoice No.','Date','Vendor','Taxable','Total'],rh=7;
-      doc.setFillColor(10,13,20);doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(7);
-      var cx=mg;hdrs.forEach(function(h,i){doc.rect(cx,y,cols[i],rh,'F');doc.text(h,cx+2,y+5);cx+=cols[i];});y+=rh;
-      _filtered.forEach(function(f,ri){
-        if(y>272){doc.addPage();y=mg;}
-        function gf(n){var x=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field===n&&x.conf>0;});return x?x.value:'—';}
-        var row=[gf('Invoice Number'),gf('Invoice Date'),gf('Vendor Name').substring(0,20),gf('Taxable Amount'),gf('Invoice Total')];
-        doc.setFillColor(ri%2===0?248:255,ri%2===0?249:255,ri%2===0?250:255);
-        doc.setTextColor(40,40,40);doc.setFont('helvetica','normal');doc.setFontSize(7);
-        cx=mg;row.forEach(function(cell,i){doc.rect(cx,y,cols[i],rh,'FD');doc.text(String(cell||'-').slice(0,22),cx+2,y+5);cx+=cols[i];});
-        y+=rh;
-      });
+        y=54;
 
-      // Footer
-      var pg=doc.internal.getNumberOfPages();
-      for(var p=1;p<=pg;p++){
-        doc.setPage(p);doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(160,160,160);
-        doc.text('AuditIQ - AI Invoice Auditor - CONFIDENTIAL',mg,doc.internal.pageSize.getHeight()-6);
-        doc.text('Page '+p+' of '+pg,pw-mg,doc.internal.pageSize.getHeight()-6,{align:'right'});
-      }
-      doc.save('AuditIQ_Report_'+new Date().toISOString().slice(0,10)+'.pdf');
-    }catch(e){alert('PDF error: '+e.message);}
+        // ── KPI CARDS ───────────────────────────────────
+        y=sectionHeader('Financial Overview',y);
+        var kpiW=(pw-mg*2-9)/4;
+        var kpis=[
+          {l:'TOTAL BILLED',   v:fmtINR(_totalBilled), sub:_filtered.length+' invoices', topC:COL.blue,   valC:COL.blue},
+          {l:'TOTAL OVERCHARGE',v:totalOver>0?fmtINR(totalOver):'None', sub:rptFindings.length+' findings', topC:totalOver>0?COL.red:COL.green, valC:totalOver>0?COL.red:COL.green},
+          {l:'CORRECT AMOUNT', v:fmtINR(_totalBilled-totalOver), sub:'After overcharges', topC:COL.green,  valC:COL.green},
+          {l:'OVERCHARGE RATE',v:overRate+'%', sub:'Of total billed', topC:COL.amber, valC:COL.amber},
+        ];
+        kpis.forEach(function(k,i){
+          var kx=mg+i*(kpiW+3);
+          setDraw(COL.border);doc.setLineWidth(0.3);
+          setFill(COL.white);rrect(kx,y,kpiW,20,1,'FD');
+          // Top colour bar
+          setFill(k.topC);rect(kx,y,kpiW,2);
+          doc.setFont('helvetica','normal');doc.setFontSize(6);setTxt(COL.textLight);
+          doc.text(k.l,kx+kpiW/2,y+8,{align:'center'});
+          doc.setFont('helvetica','bold');doc.setFontSize(11);setTxt(k.valC);
+          doc.text(k.v,kx+kpiW/2,y+15,{align:'center'});
+          doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+          doc.text(k.sub,kx+kpiW/2,y+19,{align:'center'});
+        });
+        y+=26;
+
+        // AI source note
+        setFill(_aiResults?[240,247,255]:[255,248,240]);
+        setDraw(_aiResults?COL.blue:COL.amber);doc.setLineWidth(0.5);
+        rect(mg,y,pw-mg*2,2,'F'); // left accent
+        setFill(_aiResults?[240,247,255]:[255,248,240]);
+        rect(mg+2,y,pw-mg*2-2,8);
+        doc.setFont('helvetica','normal');doc.setFontSize(7.5);
+        setTxt(_aiResults?COL.blue:COL.amber);
+        doc.text(_aiResults?'\u2713  Findings sourced from AI Audit (Groq \u00B7 llama-3.3-70b) \u2014 consistent with Audit Findings page':'\u26A0  AI Audit not yet run \u2014 run AI Audit on the Audit Findings page for complete findings',mg+4,y+5.5);
+        y+=13;
+
+        // ── CHARTS ──────────────────────────────────────
+        y=sectionHeader('Analytics',y);
+        var chartH=44;
+        var chartW=(pw-mg*2-8)/3;
+
+        // Chart 1: Spend by Vendor (bar chart)
+        var c1x=mg;
+        setFill(COL.white);setDraw(COL.border);doc.setLineWidth(0.3);rrect(c1x,y,chartW,chartH+16,1,'FD');
+        doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.text);
+        doc.text('Spend by Vendor',c1x+4,y+6);
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('Invoice total per vendor',c1x+4,y+11);
+        var barAreaY=y+16;var barAreaH=chartH-10;
+        var barsToShow=vSpendList.slice(0,4);
+        var barW2=Math.min(10,(chartW-10)/(barsToShow.length+1));
+        barsToShow.forEach(function(vs,bi){
+          var bx=c1x+5+(bi*(barW2+4));
+          var bh=maxVSpend>0?Math.round((vs.v/maxVSpend)*(barAreaH-8)):2;
+          var alpha=1-bi*0.18;
+          setFill([Math.round(30+bi*20),Math.round(111-bi*10),Math.round(165-bi*15)]);
+          rect(bx,barAreaY+barAreaH-8-bh,barW2,bh);
+          doc.setFont('helvetica','normal');doc.setFontSize(5.5);setTxt(COL.textLight);
+          var lbl=vs.n.split(' ')[0].slice(0,8);
+          doc.text(lbl,bx+barW2/2,barAreaY+barAreaH-2,{align:'center'});
+          doc.setFont('helvetica','bold');doc.setFontSize(5.5);setTxt(COL.blue);
+          if(bh>6)doc.text(fmtINR(vs.v).replace('\u20B9',''),bx+barW2/2,barAreaY+barAreaH-8-bh-1,{align:'center'});
+        });
+
+        // Chart 2: Findings by severity (donut-style rings)
+        var c2x=mg+chartW+4;
+        setFill(COL.white);setDraw(COL.border);rrect(c2x,y,chartW,chartH+16,1,'FD');
+        doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.text);
+        doc.text('Findings by Severity',c2x+4,y+6);
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('Distribution of audit flags',c2x+4,y+11);
+        var total2=rptFindings.length||1;
+        var sevData=[
+          {k:'CRITICAL',c:COL.red,   lc:[253,236,234]},
+          {k:'HIGH',     c:COL.amber, lc:[255,253,240]},
+          {k:'MEDIUM',   c:COL.blue,  lc:[240,247,255]},
+          {k:'LOW',      c:COL.green, lc:[234,250,241]},
+        ];
+        var legX=c2x+4;var legY=y+17;
+        sevData.forEach(function(s){
+          var cnt=sevCounts[s.k]||0;
+          var pct=Math.round((cnt/total2)*100);
+          setFill(s.lc);rect(legX,legY,chartW-8,7);
+          setFill(s.c);rect(legX,legY,2,7);
+          doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt(COL.textMid);
+          doc.text(s.k,legX+5,legY+5);
+          doc.setFont('helvetica','bold');setTxt(s.c);
+          doc.text(String(cnt),c2x+chartW-6,legY+5,{align:'right'});
+          // Mini bar
+          var barFw=(chartW-32)*pct/100;
+          setFill(COL.grey);rect(legX+22,legY+2,chartW-30,3);
+          setFill(s.c);if(barFw>0)rect(legX+22,legY+2,barFw,3);
+          legY+=9;
+        });
+
+        // Chart 3: Risk gauge
+        var c3x=mg+2*(chartW+4);
+        setFill(COL.white);setDraw(COL.border);rrect(c3x,y,chartW,chartH+16,1,'FD');
+        doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.text);
+        doc.text('Overcharge Risk Score',c3x+4,y+6);
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('% of billed amount flagged',c3x+4,y+11);
+        var riskY=y+28;
+        doc.setFont('helvetica','bold');doc.setFontSize(22);
+        var rColor=parseFloat(overRate)<5?COL.green:parseFloat(overRate)<15?COL.amber:COL.red;
+        setTxt(rColor);doc.text(overRate+'%',c3x+chartW/2,riskY,{align:'center'});
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('Risk Score',c3x+chartW/2,riskY+6,{align:'center'});
+        // Track
+        var trackY=riskY+10;var trackW=chartW-12;
+        setFill(COL.grey);rect(c3x+6,trackY,trackW,4);
+        // Gradient fill
+        var fillW=Math.min(trackW,trackW*parseFloat(overRate)/50);
+        if(fillW>0){setFill(rColor);rect(c3x+6,trackY,fillW,4);}
+        doc.setFont('helvetica','normal');doc.setFontSize(5.5);setTxt(COL.textLight);
+        doc.text('0%',c3x+6,trackY+9);doc.text('25%',c3x+6+trackW/2,trackY+9,{align:'center'});doc.text('50%+',c3x+6+trackW,trackY+9,{align:'right'});
+
+        y+=chartH+22;
+
+        // ── FINDINGS ────────────────────────────────────
+        y=sectionHeader('Audit Findings',y);
+
+        if(rptFindings.length===0){
+          setFill(COL.greenLight);setDraw(COL.green);doc.setLineWidth(0.4);rrect(mg,y,pw-mg*2,12,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(9);setTxt(COL.green);
+          doc.text('\u2713  No findings detected \u2014 all invoices passed all audit checks',pw/2,y+8,{align:'center'});
+          y+=18;
+        }
+
+        var sevColors={CRITICAL:COL.red,HIGH:COL.amber,MEDIUM:COL.blue,LOW:COL.green};
+        var sevBg={CRITICAL:COL.redLight,HIGH:COL.amberLight,MEDIUM:[235,245,251],LOW:COL.greenLight};
+        var sevBd={CRITICAL:COL.redBorder,HIGH:COL.amberBorder,MEDIUM:[174,214,241],LOW:[169,223,191]};
+
+        rptFindings.forEach(function(fd){
+          var descLines=doc.splitTextToSize(fd.desc||'',pw-mg*2-8);
+          var actLines=doc.splitTextToSize('Recommended Action: '+(fd.action||''),pw-mg*2-10);
+          var cardH=10+descLines.length*4.5+actLines.length*4+14;
+          y=pageCheck(y,cardH+4);
+
+          var sev=(fd.sev||'MEDIUM').toUpperCase();
+          var sc=sevColors[sev]||COL.textLight;
+          var sb=sevBg[sev]||COL.grey;
+          var sbd=sevBd[sev]||COL.border;
+
+          // Card border
+          setFill(COL.white);setDraw(COL.border);doc.setLineWidth(0.3);rrect(mg,y,pw-mg*2,cardH,1,'FD');
+
+          // Header strip
+          setFill(COL.bg);rrect(mg,y,pw-mg*2,10,1,'F');
+          rect(mg,y+5,pw-mg*2,5); // flatten bottom of header corners
+
+          // Severity badge
+          setFill(sb);setDraw(sbd);doc.setLineWidth(0.3);rrect(mg+2,y+2,16,6,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(6);setTxt(sc);
+          doc.text(sev,mg+10,y+6.5,{align:'center'});
+
+          // Type badge
+          setFill(COL.grey);setDraw(COL.border);rrect(mg+20,y+2,Math.min(fd.type.length*1.8+4,35),6,1,'FD');
+          doc.setFont('helvetica','normal');doc.setFontSize(6);setTxt(COL.textMid);
+          doc.text(fd.type,mg+22,y+6.5);
+
+          // Vendor + file
+          doc.setFont('helvetica','bold');doc.setFontSize(7.5);setTxt(COL.text);
+          var vfStr=(fd.vendor||'?')+' \u00B7 '+(fd.file||'').slice(0,30);
+          var vfX=pw-mg-2;
+          if(fd.over>0){
+            // Overcharge pill
+            setFill(COL.redLight);setDraw(COL.redBorder);rrect(pw-mg-40,y+2,38,6,1,'FD');
+            doc.setFont('helvetica','bold');doc.setFontSize(6);setTxt(COL.red);
+            doc.text(fmtINR(fd.over)+' at risk',pw-mg-21,y+6.5,{align:'center'});
+            vfX=pw-mg-42;
+          }
+          doc.setFont('helvetica','bold');doc.setFontSize(7);setTxt(COL.text);
+          var vfTrimmed=doc.splitTextToSize(vfStr,vfX-mg-58)[0]||vfStr.slice(0,40);
+          doc.text(vfTrimmed,pw-mg-(fd.over>0?44:2),y+6.5,{align:'right'});
+
+          // Separator
+          setDraw(COL.border);line(mg,y+10,mg+pw-mg*2,y+10);
+
+          // Description
+          var bodyY=y+14;
+          doc.setFont('helvetica','normal');doc.setFontSize(8);setTxt(COL.textMid);
+          doc.text(descLines,mg+4,bodyY);
+          bodyY+=descLines.length*4.5+3;
+
+          // Action box
+          setFill(COL.amberLight);setDraw(COL.amberBorder);doc.setLineWidth(0.3);
+          rrect(mg+3,bodyY,pw-mg*2-6,actLines.length*4+6,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(7);setTxt(COL.amber);
+          doc.text(actLines,mg+6,bodyY+4.5);
+
+          y+=cardH+4;
+        });
+
+        // ════════════════════════════════════════════════
+        // PAGE 2 — Invoice Table + Exec Summary
+        // ════════════════════════════════════════════════
+        addFooter(1);
+        doc.addPage();
+        y=drawSecondaryHeader()+6;
+
+        // ── INVOICE TABLE ────────────────────────────────
+        y=sectionHeader('Invoice Summary',y);
+        var cols2=[28,20,52,16,24,24,24,22];
+        var hdrs2=['Invoice No.','Date','Vendor Name','HSN','Taxable Amt','GST','Total','Status'];
+        var rh2=7;var tableW=cols2.reduce(function(s,c){return s+c;},0);
+
+        // Table header
+        setFill(COL.navy);setDraw(COL.navy);doc.setLineWidth(0);
+        rect(mg,y,tableW,rh2);
+        doc.setFont('helvetica','bold');doc.setFontSize(6.5);setTxt(COL.white);
+        var hx=mg;
+        hdrs2.forEach(function(h,i){
+          var align=i>=4?'right':'left';
+          var tx=align==='right'?hx+cols2[i]-2:hx+2;
+          doc.text(h,tx,y+5,{align:align});
+          hx+=cols2[i];
+        });
+        y+=rh2;
+
+        var tBilled2=0,tTax2=0,tGST2=0;
+        _filtered.forEach(function(f,ri){
+          y=pageCheck(y,rh2+1);
+          function gf2(n){var x=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field===n&&x.conf>0;});return x?x.value:'—';}
+          var inv=gf2('Invoice Number'),invDate=gf2('Invoice Date'),vn=gf2('Vendor Name'),hsn=gf2('HSN / SAC Code');
+          var tax=pAmt(gf2('Taxable Amount')),tot=pAmt(gf2('Invoice Total'));
+          var cgst=pAmt(gf2('CGST')),sgst=pAmt(gf2('SGST')),igst=pAmt(gf2('IGST'));
+          var gstAmt=cgst+sgst+igst;if(!gstAmt&&tot&&tax)gstAmt=tot-tax;
+          tBilled2+=tot;tTax2+=tax;tGST2+=gstAmt;
+          var isFlagged=flaggedFiles.has(f.name)||rptFindings.some(function(fd){return fd.file&&fd.file.includes(f.name);});
+
+          setFill(ri%2===0?COL.bg:COL.white);setDraw(COL.border);doc.setLineWidth(0.2);
+          rect(mg,y,tableW,rh2,'FD');
+
+          // Left flag accent
+          if(isFlagged){setFill(COL.red);rect(mg,y,1.5,rh2);}
+          else{setFill(COL.green);rect(mg,y,1.5,rh2);}
+
+          doc.setFont('courier','normal');doc.setFontSize(6.5);setTxt(COL.text);
+          hx=mg;
+          var cells=[
+            inv.slice(0,14),
+            invDate.slice(0,10),
+            vn.slice(0,20),
+            (hsn||'—').slice(0,8),
+            '',// taxable — right aligned
+            '',// gst — right aligned
+            '',// total — right aligned
+            '',// status
+          ];
+          // Left-aligned cells
+          [0,1,2,3].forEach(function(ci){
+            doc.setFont('courier','normal');doc.setFontSize(ci===0?6:6.5);setTxt(COL.text);
+            var cx2=hx+cols2.slice(0,ci).reduce(function(s,c){return s+c;},0);
+            doc.text(cells[ci],cx2+2,y+5);
+          });
+          // Right-aligned numbers
+          var rCells=[
+            {i:4,v:tax>0?fmtINR(tax):'—'},
+            {i:5,v:gstAmt>0?fmtINR(gstAmt):'—'},
+            {i:6,v:tot>0?fmtINR(tot):'—'},
+          ];
+          rCells.forEach(function(rc){
+            var rx=mg+cols2.slice(0,rc.i).reduce(function(s,c){return s+c;},0);
+            doc.setFont('courier','bold');doc.setFontSize(6.5);setTxt(rc.i===6?COL.text:COL.textMid);
+            doc.text(rc.v,rx+cols2[rc.i]-2,y+5,{align:'right'});
+          });
+          // Status badge
+          var stX=mg+cols2.slice(0,7).reduce(function(s,c){return s+c;},0);
+          if(isFlagged){
+            setFill(COL.redLight);setDraw(COL.redBorder);rrect(stX+1,y+1.5,20,4,1,'FD');
+            doc.setFont('helvetica','bold');doc.setFontSize(5.5);setTxt(COL.red);
+            doc.text('\u26A0 Flagged',stX+11,y+4.8,{align:'center'});
+          }else{
+            setFill(COL.greenLight);setDraw([169,223,191]);rrect(stX+1,y+1.5,20,4,1,'FD');
+            doc.setFont('helvetica','bold');doc.setFontSize(5.5);setTxt(COL.green);
+            doc.text('\u2713 Clean',stX+11,y+4.8,{align:'center'});
+          }
+          y+=rh2;
+        });
+
+        // Totals row
+        setFill(COL.grey);setDraw(COL.border);rect(mg,y,tableW,rh2,'FD');
+        doc.setFont('helvetica','bold');doc.setFontSize(7);setTxt(COL.text);
+        doc.text('TOTALS',mg+2,y+5);
+        var tCols=[{i:4,v:tTax2},{i:5,v:tGST2},{i:6,v:tBilled2}];
+        tCols.forEach(function(tc){
+          var tx2=mg+cols2.slice(0,tc.i).reduce(function(s,c){return s+c;},0);
+          doc.text(fmtINR(tc.v),tx2+cols2[tc.i]-2,y+5,{align:'right'});
+        });
+        y+=rh2+8;
+
+        // ── EXECUTIVE SUMMARY ────────────────────────────
+        y=pageCheck(y,60);
+        y=sectionHeader('Audit Conclusion',y);
+
+        // Dark summary box
+        setFill(COL.navy);rrect(mg,y,pw-mg*2,8,'F'); // header
+        doc.setFont('helvetica','bold');doc.setFontSize(10);setTxt([232,244,253]);
+        doc.text('Executive Summary',mg+8,y+5.5);
+        setFill(COL.blue);rect(mg,y,3,8);
+        y+=8;
+
+        var summaryText=execSummary||
+          ('This audit reviewed '+_filtered.length+' invoice'+(+_filtered.length!==1?'s':'')+
+           ' totalling '+fmtINR(_totalBilled)+' from '+vSpendList.length+' vendor'+(vSpendList.length!==1?'s':'')+'. '+
+           'The AI audit engine identified '+rptFindings.length+' issue'+(rptFindings.length!==1?'s':'')+
+           (totalOver>0?' representing '+fmtINR(totalOver)+' ('+overRate+'%) of total billed value at risk.':' — all invoices passed checks.')+
+           (sevCounts.CRITICAL>0?' '+sevCounts.CRITICAL+' critical finding'+(sevCounts.CRITICAL>1?'s require':'requires')+' immediate action.':''));
+
+        var summaryLines=doc.splitTextToSize(summaryText,pw-mg*2-12);
+        var boxH=summaryLines.length*4.5+14+34+24;
+        setFill([247,249,251]);setDraw(COL.border);doc.setLineWidth(0.3);
+        rrect(mg,y,pw-mg*2,boxH,1,'FD');
+        setFill(COL.navyLight);rect(mg,y,3,boxH); // left accent
+        doc.setFont('helvetica','normal');doc.setFontSize(8.5);setTxt(COL.textMid);
+        doc.text(summaryLines,mg+8,y+6);
+        y+=summaryLines.length*4.5+10;
+
+        // Stat row inside summary
+        var statW=(pw-mg*2-12)/3;
+        var stats=[
+          {l:'TOTAL AT RISK',   v:fmtINR(totalOver),              c:COL.red},
+          {l:'CLEARED FOR PMT', v:fmtINR(_totalBilled-totalOver), c:COL.green},
+          {l:'INVOICES FLAGGED',v:flaggedFiles.size+' of '+_filtered.length, c:COL.amber},
+        ];
+        stats.forEach(function(st,i){
+          var sx=mg+4+i*(statW+2);
+          setFill(COL.navy);rrect(sx,y,statW,16,1,'F');
+          doc.setFont('helvetica','bold');doc.setFontSize(11);setTxt(st.c);
+          doc.text(st.v,sx+statW/2,y+10,{align:'center'});
+          doc.setFont('helvetica','normal');doc.setFontSize(6);setTxt([180,200,215]);
+          doc.text(st.l,sx+statW/2,y+14.5,{align:'center'});
+        });
+        y+=22;
+
+        // Recommendations
+        doc.setFont('helvetica','bold');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('RECOMMENDED ACTIONS',mg+8,y);
+        y+=5;
+        var recActions=rptFindings.slice(0,4).map(function(fd,i){
+          return {n:String(i+1).padStart(2,'0'),text:fd.action||('Review '+fd.type+' for '+fd.vendor)};
+        });
+        if(recActions.length===0){
+          recActions=[{n:'01',text:'All invoices cleared. Approve payments as scheduled.'}];
+        }
+        recActions.forEach(function(r){
+          var rLines=doc.splitTextToSize(r.text,pw-mg*2-22);
+          doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.blue);
+          doc.text(r.n,mg+8,y+3.5);
+          doc.setFont('helvetica','normal');doc.setFontSize(8);setTxt(COL.textMid);
+          doc.text(rLines,mg+16,y+3.5);
+          y+=rLines.length*4.5+3;
+        });
+
+        y+=4;
+
+        // ── ADD FOOTERS TO ALL PAGES ──────────────────────
+        var totalPg=doc.internal.getNumberOfPages();
+        for(var p=1;p<=totalPg;p++){addFooter(p);}
+
+        doc.save('AuditIQ_Report_'+new Date().toISOString().slice(0,10)+'.pdf');
+        setGenerating(false);setGenerated(true);
+        setHistory(function(h){return [{date:dt,invoices:_filtered.length,findings:rptFindings.length}].concat(h).slice(0,5);});
+      }catch(e){setGenerating(false);alert('PDF error: '+e.message);}
+    }
+
+    // ── Use AI to generate executive summary if AI results exist ──
+    if(_aiResults&&_filtered.length>0){
+      var promptData={
+        invoiceCount:_filtered.length,
+        totalBilled:fmtINR(_totalBilled),
+        totalOvercharge:fmtINR(totalOver),
+        overchargeRate:overRate+'%',
+        findingsCount:rptFindings.length,
+        criticalCount:sevCounts.CRITICAL,
+        highCount:sevCounts.HIGH,
+        vendors:vSpendList.slice(0,3).map(function(v){return v.n+' ('+fmtINR(v.v)+')';}),
+        topFindings:rptFindings.slice(0,3).map(function(f){return f.sev+': '+f.type+' \u2014 '+f.vendor+(f.over>0?' ('+fmtINR(f.over)+')':'');})
+      };
+      fetch('/api/groq',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:'llama-3.3-70b-versatile',
+          temperature:0.3,
+          max_tokens:300,
+          messages:[{role:'user',content:'Write a concise 3-sentence executive summary for a professional invoice audit report for a finance manager. Data: '+JSON.stringify(promptData)+'. Be direct, factual, and professional. No bullet points. Return only the 3 sentences, nothing else.'}]
+        })
+      }).then(function(r){return r.json();})
+      .then(function(d){
+        var aiExec=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||'';
+        buildPDF(aiExec.trim());
+      })
+      .catch(function(){buildPDF('');});
+    } else {
+      buildPDF('');
+    }
   }
 
   function generate(){
@@ -2404,7 +2858,7 @@ function App(){
     return function(){window.removeEventListener('auditiq-ai-change',onAIChange);};
   },[]);
   function go(id){setPage(id);setPk(function(n){return n+1;});}
-  var props={uploadedFiles:uploadedFiles,setUploadedFiles:setUploadedFiles,vendorMaster:vendorMaster,setVendorMaster:setVendorMaster,config:config,setConfig:setConfig,goTo:go,apiKey:'',aiResults:aiResults,setAiResults:setAiResults};
+  var props={uploadedFiles:uploadedFiles,setUploadedFiles:setUploadedFiles,vendorMaster:vendorMaster,setVendorMaster:setVendorMaster,config:config,setConfig:setConfig,goTo:go,apiKey:'',aiResults:aiResults,setAiResults:setAiResults,profile:profile};
   var pages={dashboard:Dashboard,upload:DocumentHub,audit:AuditFindings,vendors:VendorMaster,reports:Reports,config:Configuration};
   var Page=pages[page]||Dashboard;
   var auditBadge=uploadedFiles.filter(function(f){return f.status==='EXTRACTED';}).length;
