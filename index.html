@@ -1544,8 +1544,19 @@ function Reports(props){
   }
 
   function downloadPDF(){
-    var jsPDF=window.jspdf?window.jspdf.jsPDF:null;
-    if(!jsPDF){alert('PDF library not loaded. Please check your internet connection and try again.');return;}
+    var JsPDF=window.jspdf&&window.jspdf.jsPDF||window.jsPDF||null;
+    if(!JsPDF){
+      var s1=document.createElement('script');
+      s1.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s1.onload=function(){
+        var s2=document.createElement('script');
+        s2.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+        s2.onload=function(){downloadPDF();};
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s1);
+      return;
+    }
 
     // ── Build findings from filtered invoices ────────────────────
     function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
@@ -1569,7 +1580,7 @@ function Reports(props){
     var rptInvNos={};filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!rptInvNos[n])rptInvNos[n]=[];rptInvNos[n].push(f);}});
     Object.keys(rptInvNos).forEach(function(n){if(rptInvNos[n].length>1){var dA=rptInvNos[n].reduce(function(s,f){return s+(pAmt(gfx(f.extraction,'Invoice Total'))||0);},0);var sA=pAmt(gfx(rptInvNos[n][0].extraction,'Invoice Total'))||0;rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(rptInvNos[n][0].extraction,'Vendor Name')||'?',file:rptInvNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,desc:'Invoice "'+n+'" appears '+rptInvNos[n].length+' times. Double payment risk: \u20B9'+(dA-sA).toLocaleString('en-IN')+'.',action:'Block duplicates. Pay only once.'});}});
 
-    var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    var doc=new JsPDF({orientation:'portrait',unit:'mm',format:'a4'});
     var pageW=doc.internal.pageSize.getWidth();
     var margin=14;
     var y=margin;
@@ -2511,6 +2522,16 @@ function App(){
   var vendorMasterState=useState([]);var vendorMaster=vendorMasterState[0];var setVendorMaster=vendorMasterState[1];
   var configState=useState(DEFAULT_CONFIG);var config=configState[0];var setConfig=configState[1];
   var aiEngineState=useState('gemini');var aiEngine=aiEngineState[0];var setAiEngine=aiEngineState[1];
+  // ── User profile ─────────────────────────────────────────────
+  var profileState=useState(null);var profile=profileState[0];var setProfile=profileState[1];
+  var profileFormState=useState({name:'',firm:''});var profileForm=profileFormState[0];var setProfileForm=profileFormState[1];
+  var profileErrState=useState('');var profileErr=profileErrState[0];var setProfileErr=profileErrState[1];
+  function submitProfile(){
+    if(!profileForm.name.trim()){setProfileErr('Please enter your name.');return;}
+    if(!profileForm.firm.trim()){setProfileErr('Please enter your firm name.');return;}
+    setProfile({name:profileForm.name.trim(),firm:profileForm.firm.trim()});
+    setProfileErr('');
+  }
   useEffect(function(){
     function onAIChange(e){setAiEngine(e.detail);}
     window.addEventListener('auditiq-ai-change',onAIChange);
@@ -2522,6 +2543,52 @@ function App(){
   var Page=pages[page]||Dashboard;
   var auditBadge=uploadedFiles.filter(function(f){return f.status==='EXTRACTED';}).length;
   var invCount=uploadedFiles.filter(function(f){return f.zone==='INVOICES';}).length;
+  // ── Welcome modal ─────────────────────────────────────────────
+  if(!profile) return h('div',{style:{position:'fixed',inset:0,background:'#0A0D14',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}},
+    h('div',{className:'fu',style:{width:400,background:'#0D1117',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'36px 36px 32px',boxShadow:'0 24px 80px rgba(0,0,0,0.6)'}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:28}},
+        h('svg',{width:36,height:36,viewBox:'0 0 36 36',fill:'none'},
+          h('defs',null,
+            h('linearGradient',{id:'lgW1',x1:'0%',y1:'0%',x2:'100%',y2:'100%'},h('stop',{offset:'0%',stopColor:'#0EA5E9'}),h('stop',{offset:'50%',stopColor:'#6366F1'}),h('stop',{offset:'100%',stopColor:'#8B5CF6'})),
+            h('linearGradient',{id:'lgW2',x1:'0%',y1:'0%',x2:'100%',y2:'100%'},h('stop',{offset:'0%',stopColor:'#38BDF8'}),h('stop',{offset:'100%',stopColor:'#A78BFA'}))
+          ),
+          h('rect',{width:36,height:36,rx:9,fill:'#0A0D1A'}),
+          h('rect',{width:36,height:36,rx:9,fill:'url(#lgW1)',opacity:'0.15'}),
+          h('rect',{x:0.75,y:0.75,width:34.5,height:34.5,rx:8.5,stroke:'url(#lgW1)',strokeWidth:1.5,fill:'none',opacity:'0.6'}),
+          h('rect',{x:7,y:8,width:13,height:16,rx:2,fill:'url(#lgW1)',opacity:'0.25'}),
+          h('rect',{x:7,y:8,width:13,height:16,rx:2,stroke:'url(#lgW2)',strokeWidth:1,fill:'none',opacity:'0.7'}),
+          h('line',{x1:9.5,y1:12,x2:17.5,y2:12,stroke:'#38BDF8',strokeWidth:1,opacity:'0.9',strokeLinecap:'round'}),
+          h('line',{x1:9.5,y1:14.5,x2:15,y2:14.5,stroke:'#818CF8',strokeWidth:1,opacity:'0.7',strokeLinecap:'round'}),
+          h('line',{x1:9.5,y1:17,x2:17.5,y2:17,stroke:'#818CF8',strokeWidth:1,opacity:'0.7',strokeLinecap:'round'}),
+          h('circle',{cx:21,cy:19,r:6.5,stroke:'url(#lgW2)',strokeWidth:1.8,fill:'#0A0D1A'}),
+          h('path',{d:'M17.5 19 L19.5 21.5 L24.5 16.5',stroke:'#34D399',strokeWidth:1.8,strokeLinecap:'round',strokeLinejoin:'round',fill:'none'}),
+          h('line',{x1:25.8,y1:23.8,x2:28.5,y2:26.5,stroke:'url(#lgW2)',strokeWidth:2,strokeLinecap:'round'})
+        ),
+        h('div',null,
+          h('div',{style:{fontSize:18,fontWeight:800,letterSpacing:-.5,background:'linear-gradient(90deg,#38BDF8,#818CF8)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}},'AuditIQ'),
+          h('div',{style:{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase',marginTop:1}},'AI Invoice Auditor')
+        )
+      ),
+      h('div',{style:{fontSize:20,fontWeight:800,color:'#E2E8F0',marginBottom:6}},'Welcome \uD83D\uDC4B'),
+      h('div',{style:{fontSize:13,color:'rgba(255,255,255,0.45)',marginBottom:28,lineHeight:1.6}},'Tell us who you are so we can personalise your workspace.'),
+      h('div',{style:{marginBottom:14}},
+        h('div',{style:{fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:.8,marginBottom:6}},'Your Name'),
+        h('input',{type:'text',placeholder:'e.g. Arjun Sharma',value:profileForm.name,
+          onChange:function(e){setProfileForm(function(p){return Object.assign({},p,{name:e.target.value});});setProfileErr('');},
+          onKeyDown:function(e){if(e.key==='Enter')submitProfile();},
+          style:{width:'100%',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'11px 14px',color:'#E2E8F0',fontSize:13,outline:'none',fontFamily:"'DM Sans',sans-serif"},autoFocus:true})
+      ),
+      h('div',{style:{marginBottom:22}},
+        h('div',{style:{fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:.8,marginBottom:6}},'Firm / Organisation Name'),
+        h('input',{type:'text',placeholder:'e.g. Tata Steel Ltd.',value:profileForm.firm,
+          onChange:function(e){setProfileForm(function(p){return Object.assign({},p,{firm:e.target.value});});setProfileErr('');},
+          onKeyDown:function(e){if(e.key==='Enter')submitProfile();},
+          style:{width:'100%',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'11px 14px',color:'#E2E8F0',fontSize:13,outline:'none',fontFamily:"'DM Sans',sans-serif"}})
+      ),
+      profileErr?h('div',{style:{fontSize:11,color:'#EF4444',marginBottom:12,marginTop:-10}},'\u26A0 '+profileErr):null,
+      h('button',{onClick:submitProfile,style:{width:'100%',background:'linear-gradient(135deg,#0EA5E9,#6366F1)',color:'#fff',border:'none',borderRadius:10,padding:'13px',fontSize:14,fontWeight:700,cursor:'pointer',letterSpacing:.2}},'Enter AuditIQ \u2192')
+    )
+  );
   return h('div',{style:{display:'flex',height:'100vh',background:C.bg,overflow:'hidden'}},
     // SIDEBAR
     h('div',{style:{width:210,background:C.panel,borderRight:'1px solid '+C.border,display:'flex',flexDirection:'column',flexShrink:0}},
@@ -2591,10 +2658,12 @@ function App(){
       ),
       h('div',{style:{padding:'12px 16px',borderTop:'1px solid '+C.border}},
         h('div',{style:{display:'flex',alignItems:'center',gap:7,marginBottom:8}},
-          h('div',{style:{width:26,height:26,borderRadius:'50%',background:'linear-gradient(135deg,#3B82F6,#8B5CF6)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}},'FC'),
-          h('div',null,
-            h('div',{style:{fontSize:11,fontWeight:600}},'Finance Controller'),
-            h('div',{style:{fontSize:9,color:C.faint}},'Your Organisation')
+          h('div',{style:{width:26,height:26,borderRadius:'50%',background:'linear-gradient(135deg,#0EA5E9,#6366F1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0,color:'#fff'}},
+            profile&&profile.name?profile.name.trim().split(' ').map(function(w){return w[0];}).slice(0,2).join('').toUpperCase():'FC'
+          ),
+          h('div',{style:{minWidth:0}},
+            h('div',{style:{fontSize:11,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:130}},profile?profile.name:'Finance Controller'),
+            h('div',{style:{fontSize:9,color:C.faint,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:130}},profile?profile.firm:'Your Organisation')
           )
         ),
         h('div',{style:{display:'flex',alignItems:'center',gap:5,background:(IS_LOCAL?C.amber:C.green)+'12',border:'1px solid '+(IS_LOCAL?C.amber:C.green)+'30',borderRadius:5,padding:'4px 8px'}},
