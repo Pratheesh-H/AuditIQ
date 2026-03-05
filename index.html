@@ -904,11 +904,9 @@ async function runGroqOversight(invoices,contracts,rateCards,vmData,ruleFindings
 
 function AuditFindings(props){
   var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster,config=props.config;
+  var aiRes=props.aiResults||null;
+  var setAiRes=props.setAiResults||function(){};
   var filterState=useState('ALL');var filter=filterState[0];var setFilter=filterState[1];
-  var aiResState=useState(null);var aiRes=aiResState[0];var setAiRes=aiResState[1];
-  var aiRunning=useState(false)[0];var setAiRunning=useState(false)[1];
-  var aiErr=useState('')[0];var setAiErr=useState('')[1];
-  var aiDone=useState(false)[0];var setAiDone=useState(false)[1];
   var _aiR=useState(false);var aiRunningV=_aiR[0];var setAiRunningV=_aiR[1];
   var _aiE=useState('');var aiErrV=_aiE[0];var setAiErrV=_aiE[1];
   var _aiD=useState(false);var aiDoneV=_aiD[0];var setAiDoneV=_aiD[1];
@@ -1787,92 +1785,20 @@ function Dashboard(props){
   var errors=inv.filter(function(f){return f.status==='ERROR';}).length;
   var totalBilled=approved.reduce(function(s,f){return s+parseAmt(getField(f.extraction,'Invoice Total'));},0);
 
-  // ── Compute all findings inline (same logic as AuditFindings) ──
-  var findings=[];
-  approved.forEach(function(f){
-    var ex=f.extraction;
-    var vendorName=getField(ex,'Vendor Name');
-    var invoiceTotal=getField(ex,'Invoice Total');
-    var taxableAmt=getField(ex,'Taxable Amount');
-    var cgst=getField(ex,'CGST');var sgst=getField(ex,'SGST');var igst=getField(ex,'IGST');
-    var gstin=getField(ex,'Vendor GSTIN');
-    var ifsc=getField(ex,'IFSC Code');
-    var hsnField=getField(ex,'HSN / SAC Code');
-    var rateField=getField(ex,'Rate per Unit');
-    var qtyField=getField(ex,'Quantity');
-    var totalAmt=parseAmt(invoiceTotal);
-    var taxable=parseAmt(taxableAmt);
-
-    // Calc error
-    if(totalAmt&&taxable){
-      var taxTotal=0;
-      if(cgst)taxTotal+=extractTaxAmt(cgst);
-      if(sgst)taxTotal+=extractTaxAmt(sgst);
-      if(igst)taxTotal+=extractTaxAmt(igst);
-      if(taxTotal>0){
-        var diff=totalAmt-(taxable+taxTotal);
-        if(Math.abs(diff)>((parseFloat(config.calcErrTolerance)||0.5)))
-          findings.push({type:'CALC_ERROR',vendorName:vendorName||'Unknown',overchargeAmt:diff>0?diff:0});
-      }
-    }
-    // HSN rate
-    if(hsnField&&(cgst||igst)){
-      var hsnCode=hsnField.replace(/[^0-9]/g,'');
-      var mr=(config.gstRates||[]).find(function(r){return hsnCode.startsWith(r.hsn.replace(/[^0-9]/g,''));});
-      if(mr){
-        var expRate=parseFloat(mr.rate)||0;var actRate=0;
-        if(cgst){var mcr=cgst.match(/^([\d.]+)%/);if(mcr)actRate=parseFloat(mcr[1])*2;}
-        if(igst&&!actRate){var mir=igst.match(/^([\d.]+)%/);if(mir)actRate=parseFloat(mir[1]);}
-        if(actRate>0&&Math.abs(actRate-expRate)>0.5){
-          var overR=(parseAmt(taxableAmt)||0)*(actRate-expRate)/100;
-          findings.push({type:'GST_RATE',vendorName:vendorName||'Unknown',overchargeAmt:overR>0?overR:0});
-        }
-      }
-    }
-    // GSTIN
-    if(gstin&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin))
-      findings.push({type:'COMPLIANCE',vendorName:vendorName||'Unknown',overchargeAmt:0});
-    // Bank
-    if(vendorName&&ifsc&&config.bankValidation){
-      var vmv=vendorMaster.find(function(v){return (v.name&&v.name.toLowerCase()===vendorName.toLowerCase())||(v.gstin&&v.gstin===gstin);});
-      if(vmv&&vmv.ifsc&&vmv.ifsc!==ifsc)
-        findings.push({type:'FRAUD',vendorName:vendorName||'Unknown',overchargeAmt:totalAmt||0});
-    }
-    // Rate
-    var rateVal=parseAmt(rateField);var qtyVal=parseAmt(qtyField);
-    if(rateVal&&vendorName){
-      uploadedFiles.filter(function(f2){return (f2.zone==='RATE_CARDS'||f2.zone==='CONTRACTS')&&f2.status==='REVIEWED'&&f2.extraction;}).forEach(function(rcf){
-        var rcV=getField(rcf.extraction,'Vendor Name')||getField(rcf.extraction,'Vendor');
-        var rcR=parseAmt(getField(rcf.extraction,'Rate per Unit')||getField(rcf.extraction,'Contracted Rate'));
-        if(rcV&&rcV.toLowerCase()===(vendorName||'').toLowerCase()&&rcR){
-          var dev=((rateVal-rcR)/rcR)*100;
-          if(dev>(parseFloat(config.pricingDeviation)||5)){
-            var over=qtyVal?(rateVal-rcR)*qtyVal:0;
-            findings.push({type:'PRICING',vendorName:vendorName||'Unknown',overchargeAmt:over});
-          }
-        }
-      });
-    }
-    // Surcharge
-    if(totalAmt&&taxable&&rateVal&&qtyVal){
-      var rateAmt=rateVal*qtyVal;
-      var unexplained=taxable-rateAmt;
-      var cap=rateAmt*((parseFloat(config.surchargeCapPct)||10)/100);
-      if(unexplained>cap&&unexplained>100)
-        findings.push({type:'SURCHARGE',vendorName:vendorName||'Unknown',overchargeAmt:unexplained-cap});
-    }
-  });
-  // Duplicates
+  // ── Use AI audit results from app state (same data as Audit Findings page) ──
+  var aiResults=props.aiResults||null;
+  var findings=aiResults?aiResults.extras:[];
+  // Always include duplicate check (factual, instant)
   var invNosD={};
   approved.forEach(function(f){var n=getField(f.extraction,'Invoice Number');if(n){if(!invNosD[n])invNosD[n]=[];invNosD[n].push(f);}});
   Object.keys(invNosD).forEach(function(n){
     if(invNosD[n].length>1){
       var dupAmt=invNosD[n].reduce(function(s,f){return s+(parseAmt(getField(f.extraction,'Invoice Total'))||0);},0);
       var singleAmt=parseAmt(getField(invNosD[n][0].extraction,'Invoice Total'))||0;
-      findings.push({type:'DUPLICATE',vendorName:getField(invNosD[n][0].extraction,'Vendor Name')||'Unknown',overchargeAmt:dupAmt-singleAmt});
+      var alreadyInAI=findings.some(function(fd){return fd.type==='DUPLICATE'&&fd.title&&fd.title.includes(n);});
+      if(!alreadyInAI)findings=findings.concat([{type:'DUPLICATE',vendorName:getField(invNosD[n][0].extraction,'Vendor Name')||'Unknown',overchargeAmt:dupAmt-singleAmt}]);
     }
   });
-
   var totalOvercharge=findings.reduce(function(s,f){return s+(f.overchargeAmt||0);},0);
   var correctAmount=totalBilled-totalOvercharge;
 
@@ -1909,12 +1835,21 @@ function Dashboard(props){
       h('button',{onClick:function(){goTo('upload');},style:{background:C.blue,color:'#fff',border:'none',borderRadius:8,padding:'10px 18px',fontSize:12,fontWeight:700,whiteSpace:'nowrap',cursor:'pointer'}},'Go to Document Hub \u2192')
     ):null,
 
+    // ── AI AUDIT PROMPT (when not yet run) ──────────────────
+    approved.length>0&&!aiResults?h('div',{style:{background:'linear-gradient(135deg,rgba(139,92,246,0.1),rgba(99,102,241,0.06))',border:'1px solid rgba(139,92,246,0.3)',borderRadius:12,padding:'14px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,marginBottom:2}},
+      h('div',null,
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:3}},'🧠 AI Audit Not Run Yet'),
+        h('div',{style:{fontSize:12,color:C.muted}},'Overcharge data will appear here after running AI Audit on the Audit Findings page.')
+      ),
+      h('button',{onClick:function(){goTo('audit');},style:{background:'linear-gradient(135deg,#8B5CF6,#6D28D9)',color:'#fff',border:'none',borderRadius:8,padding:'10px 18px',fontSize:12,fontWeight:700,whiteSpace:'nowrap',cursor:'pointer'}},'Run AI Audit →')
+    ):null,
+
     // ── KPI STRIP ──────────────────────────────────────────────
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}},
       [
         {l:'Total Billed',v:approved.length?fmt(totalBilled):'—',sub:approved.length?approved.length+' invoices approved':'No invoices yet',c:C.text},
-        {l:'Correct Amount',v:(approved.length&&totalOvercharge>0)?fmt(correctAmount):'—',sub:totalOvercharge>0?'After removing overcharges':'No overcharges found',c:C.green},
-        {l:'Total Overcharge',v:totalOvercharge>0?fmt(totalOvercharge):'—',sub:totalOvercharge>0?findings.length+' findings':'Clean audit',c:totalOvercharge>0?C.red:C.green},
+        {l:'Correct Amount',v:(approved.length&&totalOvercharge>0)?fmt(correctAmount):'—',sub:totalOvercharge>0?'After removing overcharges':aiResults?'No overcharges found':'Run AI Audit to analyse',c:C.green},
+        {l:'Total Overcharge',v:totalOvercharge>0?fmt(totalOvercharge):(aiResults?'—':'?'),sub:totalOvercharge>0?findings.length+' findings':aiResults?'Clean audit':'AI audit pending',c:totalOvercharge>0?C.red:aiResults?C.green:C.faint},
         {l:'Vendors',v:vendorMaster.length||'—',sub:vendorMaster.length?Object.keys(cats).length+' categories':'No vendors yet',c:'#8B5CF6'},
       ].map(function(k,i){
         return h('div',{key:k.l,className:'card fu',style:{animationDelay:i*50+'ms',padding:'16px 18px',borderLeft:k.l==='Total Overcharge'&&totalOvercharge>0?'3px solid '+C.red:k.l==='Correct Amount'&&totalOvercharge>0?'3px solid '+C.green:'none'}},
@@ -2433,6 +2368,7 @@ function App(){
   var vendorMasterState=useState([]);var vendorMaster=vendorMasterState[0];var setVendorMaster=vendorMasterState[1];
   var configState=useState(DEFAULT_CONFIG);var config=configState[0];var setConfig=configState[1];
   var aiEngineState=useState('gemini');var aiEngine=aiEngineState[0];var setAiEngine=aiEngineState[1];
+  var aiResultsState=useState(null);var aiResults=aiResultsState[0];var setAiResults=aiResultsState[1];
   // ── User profile ─────────────────────────────────────────────
   var profileState=useState(null);var profile=profileState[0];var setProfile=profileState[1];
   var profileFormState=useState({name:'',firm:''});var profileForm=profileFormState[0];var setProfileForm=profileFormState[1];
@@ -2449,7 +2385,7 @@ function App(){
     return function(){window.removeEventListener('auditiq-ai-change',onAIChange);};
   },[]);
   function go(id){setPage(id);setPk(function(n){return n+1;});}
-  var props={uploadedFiles:uploadedFiles,setUploadedFiles:setUploadedFiles,vendorMaster:vendorMaster,setVendorMaster:setVendorMaster,config:config,setConfig:setConfig,goTo:go,apiKey:''};
+  var props={uploadedFiles:uploadedFiles,setUploadedFiles:setUploadedFiles,vendorMaster:vendorMaster,setVendorMaster:setVendorMaster,config:config,setConfig:setConfig,goTo:go,apiKey:'',aiResults:aiResults,setAiResults:setAiResults};
   var pages={dashboard:Dashboard,upload:DocumentHub,audit:AuditFindings,vendors:VendorMaster,reports:Reports,config:Configuration};
   var Page=pages[page]||Dashboard;
   var auditBadge=uploadedFiles.filter(function(f){return f.status==='EXTRACTED';}).length;
