@@ -1653,7 +1653,7 @@ function Reports(props){
         setFill([74,144,196,0.12]);
         setDraw(COL.blueLight);doc.setLineWidth(0.4);
         // small dot + text
-        setFill(COL.blueLight);rrect(chipX,chipY-3.5,3,3,1);
+        setFill(COL.blueLight);rrect(chipX,chipY-3.5,3,3,1,'F');
         doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.blueLight);
         doc.text('AI Audit \u00B7 Groq llama-3.3-70b',chipX+4.5,chipY-0.8);
 
@@ -1987,7 +1987,7 @@ function Reports(props){
         y=sectionHeader('Audit Conclusion',y);
 
         // Dark summary box
-        setFill(COL.navy);rrect(mg,y,pw-mg*2,8,'F'); // header
+        setFill(COL.navy);rrect(mg,y,pw-mg*2,1,1,'F'); // header
         doc.setFont('helvetica','bold');doc.setFontSize(10);setTxt([232,244,253]);
         doc.text('Executive Summary',mg+8,y+5.5);
         setFill(COL.blue);rect(mg,y,3,8);
