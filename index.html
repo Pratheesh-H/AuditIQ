@@ -1552,10 +1552,10 @@ function Reports(props){
       document.head.appendChild(s1);
       return;
     }
-    try{_buildPDF(JsPDF);}catch(e){alert('PDF generation failed: '+e.message);}
+    try{_buildPDF(JsPDF,filtered,totalBilled,config,scope,vendor,vendorMaster,uploadedFiles);}catch(e){alert('PDF generation failed: '+e.message);}
   }
 
-  function _buildPDF(JsPDF){
+  function _buildPDF(JsPDF,filtered,totalBilled,config,scope,vendor,vendorMaster,uploadedFiles){
 
     // ── Build findings from filtered invoices ────────────────────
     function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
