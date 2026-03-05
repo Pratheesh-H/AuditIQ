@@ -6,7 +6,6 @@
 <title>AuditIQ</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;overflow:hidden}
@@ -1548,15 +1547,15 @@ function Reports(props){
     if(!JsPDF){
       var s1=document.createElement('script');
       s1.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-      s1.onload=function(){
-        var s2=document.createElement('script');
-        s2.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
-        s2.onload=function(){downloadPDF();};
-        document.head.appendChild(s2);
-      };
+      s1.onload=function(){downloadPDF();};
+      s1.onerror=function(){alert('Could not load PDF library. Check internet connection.');};
       document.head.appendChild(s1);
       return;
     }
+    try{_buildPDF(JsPDF);}catch(e){alert('PDF generation failed: '+e.message);}
+  }
+
+  function _buildPDF(JsPDF){
 
     // ── Build findings from filtered invoices ────────────────────
     function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
@@ -1685,15 +1684,27 @@ function Reports(props){
       return [gf('Invoice Number'),gf('Invoice Date'),gf('Vendor Name').substring(0,20),gf('Taxable Amount'),gf('Invoice Total')];
     });
 
-    doc.autoTable({
-      startY:y,
-      head:[['Invoice No.','Date','Vendor','Taxable','Total']],
-      body:tableRows,
-      margin:{left:margin,right:margin},
-      headStyles:{fillColor:[10,13,20],textColor:[255,255,255],fontSize:7,fontStyle:'bold'},
-      bodyStyles:{fontSize:7,textColor:[40,40,40]},
-      alternateRowStyles:{fillColor:[249,250,251]},
-      columnStyles:{0:{cellWidth:30},1:{cellWidth:22},2:{cellWidth:55},3:{cellWidth:28},4:{cellWidth:28}},
+    // ── Manual table — no autoTable plugin needed ─────────────────
+    var cols=[30,22,55,28,28];
+    var heads=['Invoice No.','Date','Vendor','Taxable','Total'];
+    var rowH=7;
+    // Header row
+    doc.setFillColor(10,13,20);doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(7);
+    var cx=margin;
+    heads.forEach(function(h,i){doc.rect(cx,y,cols[i],rowH,'F');doc.text(h,cx+2,y+5);cx+=cols[i];});
+    y+=rowH;
+    // Data rows
+    tableRows.forEach(function(row,ri){
+      if(y>270){doc.addPage();y=margin;}
+      doc.setFillColor(ri%2===0?249:255,ri%2===0?250:255,ri%2===0?251:255);
+      doc.setTextColor(40,40,40);doc.setFont('helvetica','normal');doc.setFontSize(7);
+      cx=margin;
+      row.forEach(function(cell,i){
+        doc.rect(cx,y,cols[i],rowH,'FD');
+        doc.text(String(cell||'—').slice(0,20),cx+2,y+5);
+        cx+=cols[i];
+      });
+      y+=rowH;
     });
 
     // ── Footer ───────────────────────────────────────────────────
