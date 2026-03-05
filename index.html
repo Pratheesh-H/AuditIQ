@@ -1507,24 +1507,35 @@ function Reports(props){
       function pAmt(v){if(!v)return 0;var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);if(!tokens)return 0;var best=0;tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});return best;}
       var _totalBilled=_filtered.reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
 
-      // ── Build findings ──────────────────────────────────────────
-      var rptFindings=[];
-      _filtered.forEach(function(f){
-        var ex=f.extraction;
-        var vn=gfx(ex,'Vendor Name'),inv=gfx(ex,'Invoice Total'),tax=gfx(ex,'Taxable Amount');
-        var cgst=gfx(ex,'CGST'),sgst=gfx(ex,'SGST'),igst=gfx(ex,'IGST');
-        var gstin=gfx(ex,'Vendor GSTIN'),ifsc=gfx(ex,'IFSC Code');
-        var totalAmt=pAmt(inv),taxable=pAmt(tax);
-        if(totalAmt&&taxable){
-          var taxT=0;
-          [cgst,sgst,igst].forEach(function(t){if(t){var m=String(t).match(/[\d,]+(?:\.\d+)?$/);if(m)taxT+=parseFloat(m[0].replace(/,/g,''));}});
-          if(taxT>0){var diff=totalAmt-(taxable+taxT);if(Math.abs(diff)>(parseFloat(_cfg.calcErrTolerance)||0.5))rptFindings.push({type:'CALC ERROR',sev:'HIGH',vendor:vn||'?',file:f.name,over:diff>0?diff:0,desc:'Invoice total \u20B9'+totalAmt.toLocaleString('en-IN')+' \u2260 taxable+taxes. Diff: \u20B9'+Math.abs(diff).toFixed(2),action:'Hold payment. Request a corrected invoice.'});}
-        }
-        if(gstin&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin))rptFindings.push({type:'INVALID GSTIN',sev:'HIGH',vendor:vn||'?',file:f.name,over:0,desc:'GSTIN "'+gstin+'" fails format check.',action:'Block ITC claim. Contact vendor for correct GSTIN.'});
-        if(vn&&ifsc&&_cfg.bankValidation){var vmv=_vm.find(function(v){return v.name&&v.name.toLowerCase()===(vn||'').toLowerCase();});if(vmv&&vmv.ifsc&&vmv.ifsc!==ifsc)rptFindings.push({type:'BANK MISMATCH',sev:'CRITICAL',vendor:vn||'?',file:f.name,over:totalAmt||0,desc:'Invoice IFSC "'+ifsc+'" differs from Vendor Master IFSC "'+vmv.ifsc+'".',action:'FREEZE PAYMENT.'});}
+      // ── Use AI audit findings (same source as Audit Findings page) ──
+      var _aiResults=props.aiResults||null;
+      var _aiFindings=_aiResults?(_aiResults.extras||[]):[];
+      // Map AI findings to PDF format, filtered to vendors in scope
+      var rptFindings=_aiFindings.filter(function(fd){
+        if(scope==='VENDOR'&&vendor){return (fd.vendorName||'').toLowerCase()===(vendor||'').toLowerCase();}
+        return true;
+      }).map(function(fd){
+        return {
+          type:fd.type||'FINDING',
+          sev:fd.severity||'MEDIUM',
+          vendor:fd.vendorName||'?',
+          file:fd.file||fd.ref||'',
+          over:fd.overchargeAmt||0,
+          desc:fd.desc||fd.plainEnglish||'',
+          action:fd.action||''
+        };
       });
-      var invNos={};_filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!invNos[n])invNos[n]=[];invNos[n].push(f);}});
-      Object.keys(invNos).forEach(function(n){if(invNos[n].length>1){var dA=invNos[n].reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);var sA=pAmt(gfx(invNos[n][0].extraction,'Invoice Total'));rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(invNos[n][0].extraction,'Vendor Name')||'?',file:invNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,desc:'Invoice "'+n+'" appears '+invNos[n].length+' times.',action:'Block duplicates. Pay only once.'});}});
+      // Always include duplicate invoice check (factual, instant)
+      var invNos={};
+      _filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!invNos[n])invNos[n]=[];invNos[n].push(f);}});
+      Object.keys(invNos).forEach(function(n){
+        if(invNos[n].length>1){
+          var dA=invNos[n].reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
+          var sA=pAmt(gfx(invNos[n][0].extraction,'Invoice Total'));
+          var alreadyIn=rptFindings.some(function(fd){return fd.type==='DUPLICATE'&&fd.desc&&fd.desc.includes(n);});
+          if(!alreadyIn)rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(invNos[n][0].extraction,'Vendor Name')||'?',file:invNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,desc:'Invoice "'+n+'" appears '+invNos[n].length+' times.',action:'Block duplicates. Pay only once.'});
+        }
+      });
 
       // ── Build PDF ───────────────────────────────────────────────
       var doc=new JsPDF({orientation:'portrait',unit:'mm',format:'a4'});
@@ -1560,6 +1571,14 @@ function Reports(props){
       });
       y+=24;
 
+      // AI audit source note
+      if(_aiResults){
+        doc.setFontSize(7);doc.setFont('helvetica','italic');doc.setTextColor(99,102,241);
+        doc.text('\u2713 Findings sourced from AI Audit (Groq) — same data as Audit Findings page',mg,y);y+=8;
+      } else {
+        doc.setFontSize(7);doc.setFont('helvetica','italic');doc.setTextColor(180,80,80);
+        doc.text('\u26A0 AI Audit not run — no AI findings available. Run AI Audit on the Audit Findings page first.',mg,y);y+=8;
+      }
       // Findings
       if(rptFindings.length>0){
         doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(10,13,20);
