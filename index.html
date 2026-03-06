@@ -2325,10 +2325,10 @@ function Dashboard(props){
         {l:'Total Overcharge',v:totalOvercharge>0?fmt(totalOvercharge):(aiResults?'—':'?'),sub:totalOvercharge>0?findings.length+' findings':aiResults?'Clean audit':'AI audit pending',c:totalOvercharge>0?C.red:aiResults?C.green:C.faint},
         {l:'Vendors',v:vendorMaster.length||'—',sub:vendorMaster.length?Object.keys(cats).length+' categories':'No vendors yet',c:'#8B5CF6'},
       ].map(function(k,i){
-        return h('div',{key:k.l,className:'card fu',style:{animationDelay:i*50+'ms',padding:'16px 18px',borderLeft:k.l==='Total Overcharge'&&totalOvercharge>0?'3px solid '+C.red:k.l==='Correct Amount'&&totalOvercharge>0?'3px solid '+C.green:'none'}},
-          h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:8}},k.l),
-          h('div',{style:{fontSize:22,fontWeight:800,color:k.c,fontFamily:"'DM Mono',monospace",letterSpacing:-1}},k.v),
-          h('div',{style:{fontSize:11,color:C.faint,marginTop:5}},k.sub)
+        return h('div',{key:k.l,className:'card fu',style:{animationDelay:i*50+'ms',padding:'18px 20px',borderLeft:k.l==='Total Overcharge'&&totalOvercharge>0?'3px solid '+C.red:k.l==='Correct Amount'&&totalOvercharge>0?'3px solid '+C.green:'none'}},
+          h('div',{style:{fontSize:11,color:C.muted,textTransform:'uppercase',letterSpacing:1.2,marginBottom:10,fontWeight:600}},k.l),
+          h('div',{style:{fontSize:28,fontWeight:800,color:k.c,fontFamily:"'DM Mono',monospace",letterSpacing:-1}},k.v),
+          h('div',{style:{fontSize:12,color:C.faint,marginTop:6}},k.sub)
         );
       })
     ),
@@ -2345,12 +2345,12 @@ function Dashboard(props){
             var pct=maxT>0?(byType[k]/maxT)*100:0;
             var col=typeColors[k]||C.muted;
             return h('div',{key:k},
-              h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
-                h('span',{style:{fontSize:11,color:C.muted}},typeLabels[k]||k),
-                h('span',{style:{fontSize:11,fontWeight:700,color:col,fontFamily:"'DM Mono',monospace"}},fmt(byType[k]))
+              h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:6}},
+                h('span',{style:{fontSize:13,fontWeight:500,color:C.muted}},typeLabels[k]||k),
+                h('span',{style:{fontSize:13,fontWeight:700,color:col,fontFamily:"'DM Mono',monospace"}},fmt(byType[k]))
               ),
-              h('div',{style:{height:5,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden'}},
-                h('div',{style:{width:pct+'%',height:'100%',background:col,borderRadius:3}})
+              h('div',{style:{height:10,background:'rgba(255,255,255,0.07)',borderRadius:5,overflow:'hidden'}},
+                h('div',{style:{width:pct+'%',height:'100%',background:col,borderRadius:5}})
               )
             );
           })
@@ -2366,12 +2366,12 @@ function Dashboard(props){
               vendorOverList.map(function(v){
                 var pct=(v.v/maxVendorOver)*100;
                 return h('div',{key:v.n},
-                  h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
-                    h('span',{style:{fontSize:11,color:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:160}},v.n),
-                    h('span',{style:{fontSize:11,fontWeight:700,color:C.red,fontFamily:"'DM Mono',monospace"}},fmt(v.v))
+                  h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:6}},
+                    h('span',{style:{fontSize:13,fontWeight:500,color:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:180}},v.n),
+                    h('span',{style:{fontSize:13,fontWeight:700,color:C.red,fontFamily:"'DM Mono',monospace"}},fmt(v.v))
                   ),
-                  h('div',{style:{height:5,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden'}},
-                    h('div',{style:{width:pct+'%',height:'100%',background:C.red,borderRadius:3}})
+                  h('div',{style:{height:10,background:'rgba(255,255,255,0.07)',borderRadius:5,overflow:'hidden'}},
+                    h('div',{style:{width:pct+'%',height:'100%',background:C.red,borderRadius:5}})
                   )
                 );
               })
@@ -2418,29 +2418,29 @@ function Dashboard(props){
           var f2=Math.max(0,intercept+slope*(n+1));
           var allVals=vals.concat([f1,f2]);
           var maxAll=Math.max.apply(null,allVals)||1;
-          var W=280,H=90,pad=6;
+          var W=280,H=150,pad=6;
           var barW=Math.floor((W-pad*2)/(allVals.length+1));
           var fmt2=function(v){return v>=1e7?'₹'+(v/1e7).toFixed(1)+'Cr':v>=1e5?'₹'+(v/1e5).toFixed(1)+'L':'₹'+(v/1000).toFixed(0)+'K';};
           var allLabels=keys.concat(['F+1','F+2']);
           var bars=allVals.map(function(v,i){
             var x=pad+i*(barW+2);
-            var bh=Math.round((v/maxAll)*(H-20));
+            var bh=Math.round((v/maxAll)*(H-30));
             var isForecast=i>=keys.length;
             return h('g',{key:i},
               h('rect',{x:x,y:H-20-bh,width:barW,height:bh,rx:2,
                 fill:isForecast?C.amber+'60':C.blue,
                 stroke:isForecast?C.amber:'none',strokeWidth:isForecast?1:0,
                 strokeDasharray:isForecast?'3,2':'none'}),
-              h('text',{x:x+barW/2,y:H-8,textAnchor:'middle',fontSize:7,fill:C.faint},allLabels[i].replace(/\d{4}-/,'')),
-              bh>12?h('text',{x:x+barW/2,y:H-22-bh,textAnchor:'middle',fontSize:6,fill:isForecast?C.amber:C.muted},fmt2(v)):null
+              h('text',{x:x+barW/2,y:H-6,textAnchor:'middle',fontSize:10,fill:C.faint},allLabels[i].replace(/\d{4}-/,'')),
+              bh>12?h('text',{x:x+barW/2,y:H-32-bh,textAnchor:'middle',fontSize:10,fontWeight:'bold',fill:isForecast?C.amber:C.muted},fmt2(v)):null
             );
           });
           return h('div',{className:'card'},
-            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Spend Trend & Forecast'),
-            h('div',{style:{fontSize:10,color:C.faint,marginBottom:10}},'Actual spend + 2-month projection'),
+            h('div',{style:{fontSize:14,fontWeight:700,marginBottom:3}},'Spend Trend & Forecast'),
+            h('div',{style:{fontSize:12,color:C.faint,marginBottom:12}},'Actual spend + 2-month projection'),
             h('svg',{width:'100%',viewBox:'0 0 '+W+' '+H,style:{overflow:'visible'}},
               h('g',null,bars),
-              h('text',{x:W-pad,y:H-4,textAnchor:'end',fontSize:7,fill:C.amber+'aa'},'▨ Forecast')
+              h('text',{x:W-pad,y:H-4,textAnchor:'end',fontSize:10,fill:C.amber+'aa'},'▨ Forecast')
             )
           );
         })(),
@@ -2458,16 +2458,16 @@ function Dashboard(props){
           findings.forEach(function(f){if(!byV2[f.vendorName])byV2[f.vendorName]=0;byV2[f.vendorName]+=(f.overchargeAmt||0);});
           var vendList=Object.keys(byV2).map(function(n){return{n:n,v:byV2[n]};}).sort(function(a,b){return b.v-a.v;}).slice(0,4);
           var maxV3=vendList.length?vendList[0].v:1;
-          var W2=260,H2=90;
+          var W2=260,H2=150;
           // Donut for overcharge rate
           var pct=Math.min(rate/100,1);
-          var r=30,cx=45,cy=H2/2;
+          var r=46,cx=55,cy=H2/2;
           var circ=2*Math.PI*r;
           var dash=pct*circ;
           var rateColor=rate>20?C.red:rate>10?C.amber:C.green;
           return h('div',{className:'card'},
-            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Overcharge Risk'),
-            h('div',{style:{fontSize:10,color:C.faint,marginBottom:8}},'Rate vs vendor breakdown'),
+            h('div',{style:{fontSize:14,fontWeight:700,marginBottom:3}},'Overcharge Risk'),
+            h('div',{style:{fontSize:12,color:C.faint,marginBottom:10}},'Rate vs vendor breakdown'),
             h('svg',{width:'100%',viewBox:'0 0 '+W2+' '+H2},
               // Donut
               h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:C.border,strokeWidth:8}),
@@ -2475,18 +2475,18 @@ function Dashboard(props){
                 strokeDasharray:dash+' '+(circ-dash),
                 strokeLinecap:'round',
                 transform:'rotate(-90 '+cx+' '+cy+')'}),
-              h('text',{x:cx,y:cy-4,textAnchor:'middle',fontSize:13,fontWeight:'bold',fill:rateColor},rate.toFixed(1)+'%'),
-              h('text',{x:cx,y:cy+10,textAnchor:'middle',fontSize:7,fill:C.faint},'overcharge'),
+              h('text',{x:cx,y:cy-4,textAnchor:'middle',fontSize:18,fontWeight:'bold',fill:rateColor},rate.toFixed(1)+'%'),
+              h('text',{x:cx,y:cy+12,textAnchor:'middle',fontSize:10,fill:C.faint},'overcharge'),
               // Vendor bars on right
-              h('g',{transform:'translate(95,8)'},
+              h('g',{transform:'translate(112,14)'},
                 vendList.map(function(v,i){
                   var bw=Math.round((v.v/maxV3)*130);
                   var y2=i*20;
-                  var nm=v.n.length>14?v.n.slice(0,14)+'…':v.n;
+                  var nm=v.n.length>16?v.n.slice(0,16)+'…':v.n;
                   return h('g',{key:i},
-                    h('text',{x:0,y:y2+10,fontSize:7.5,fill:C.muted},nm),
-                    h('rect',{x:0,y:y2+13,width:bw,height:5,rx:2,fill:C.red+'80'}),
-                    h('text',{x:bw+3,y:y2+18,fontSize:7,fill:C.red},'₹'+(v.v/1000).toFixed(0)+'K')
+                    h('text',{x:0,y:y2+11,fontSize:10,fontWeight:'500',fill:C.muted},nm),
+                    h('rect',{x:0,y:y2+14,width:bw,height:8,rx:3,fill:C.red+'80'}),
+                    h('text',{x:bw+4,y:y2+22,fontSize:10,fontWeight:'bold',fill:C.red},'₹'+(v.v/1000).toFixed(0)+'K')
                   );
                 })
               )
@@ -2504,7 +2504,7 @@ function Dashboard(props){
           findings.forEach(function(f){typeCount[f.type]=(typeCount[f.type]||0)+1;});
           var topTypes=Object.keys(typeCount).sort(function(a,b){return typeCount[b]-typeCount[a];}).slice(0,4);
           var typeLabels2={CALC_ERROR:'Calc Errors',GST_RATE:'GST Rate',FRAUD:'Fraud',PRICING:'Pricing',SURCHARGE:'Surcharge',DUPLICATE:'Duplicate',COMPLIANCE:'Compliance'};
-          var W3=260,H3=90,cx3=42,cy3=H3/2,r3=32;
+          var W3=260,H3=150,cx3=46,cy3=H3/2,r3=44;
           var segments=[];
           var startAngle=-Math.PI/2;
           var typeColorsArr=[C.red,C.amber,C.blue,C.purple,'#06B6D4',C.green];
@@ -2524,8 +2524,8 @@ function Dashboard(props){
             startAngle+=ang;
           });
           return h('div',{className:'card'},
-            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Audit Health Score'),
-            h('div',{style:{fontSize:10,color:C.faint,marginBottom:8}},'Invoice pass rate + finding breakdown'),
+            h('div',{style:{fontSize:14,fontWeight:700,marginBottom:3}},'Audit Health Score'),
+            h('div',{style:{fontSize:12,color:C.faint,marginBottom:10}},'Invoice pass rate + finding breakdown'),
             h('svg',{width:'100%',viewBox:'0 0 '+W3+' '+H3},
               findings.length===0
                 ? h('g',null,
@@ -2533,15 +2533,15 @@ function Dashboard(props){
                     h('text',{x:cx3,y:cy3+1,textAnchor:'middle',dominantBaseline:'middle',fontSize:18,fill:C.green},'✓')
                   )
                 : h('g',null,segments),
-              h('text',{x:cx3,y:cy3-4,textAnchor:'middle',fontSize:14,fontWeight:'bold',fill:scoreColor},score+'%'),
-              h('text',{x:cx3,y:cy3+10,textAnchor:'middle',fontSize:7,fill:C.faint},'health'),
-              h('g',{transform:'translate(92,6)'},
+              h('text',{x:cx3,y:cy3-4,textAnchor:'middle',fontSize:18,fontWeight:'bold',fill:scoreColor},score+'%'),
+              h('text',{x:cx3,y:cy3+12,textAnchor:'middle',fontSize:10,fill:C.faint},'health'),
+              h('g',{transform:'translate(100,12)'},
                 topTypes.map(function(t,i){
                   var col2=typeColorsArr[allTypes.indexOf(t)%typeColorsArr.length];
                   return h('g',{key:t},
-                    h('rect',{x:0,y:i*18,width:7,height:7,rx:2,fill:col2}),
-                    h('text',{x:10,y:i*18+7,fontSize:8,fill:C.muted},(typeLabels2[t]||t)+' ('+typeCount[t]+')'),
-                    h('text',{x:155,y:i*18+7,fontSize:8,fontWeight:'bold',fill:col2},Math.round((typeCount[t]/totalFindings)*100)+'%')
+                    h('rect',{x:0,y:i*22,width:9,height:9,rx:2,fill:col2}),
+                    h('text',{x:14,y:i*22+9,fontSize:11,fill:C.muted},(typeLabels2[t]||t)+' ('+typeCount[t]+')'),
+                    h('text',{x:148,y:i*22+9,fontSize:11,fontWeight:'bold',fill:col2},Math.round((typeCount[t]/totalFindings)*100)+'%')
                   );
                 })
               )
@@ -2560,9 +2560,9 @@ function Dashboard(props){
           pipeline.map(function(p){
             return h('div',{key:p.stage,style:{textAlign:'center'}},
               h('div',{style:{background:p.c+'18',border:'1px solid '+p.c+'35',borderRadius:8,padding:'10px 6px',marginBottom:5}},
-                h('div',{style:{fontSize:20,fontWeight:800,color:p.c,fontFamily:"'DM Mono',monospace"}},p.cnt)
+                h('div',{style:{fontSize:26,fontWeight:800,color:p.c,fontFamily:"'DM Mono',monospace"}},p.cnt)
               ),
-              h('div',{style:{fontSize:10,color:C.muted,lineHeight:1.4}},p.stage)
+              h('div',{style:{fontSize:12,color:C.muted,lineHeight:1.4}},p.stage)
             );
           })
         )
@@ -2576,8 +2576,8 @@ function Dashboard(props){
               catData.map(function(d){
                 return h('div',{key:d.n,style:{display:'flex',alignItems:'center',gap:8}},
                   h('div',{style:{width:8,height:8,borderRadius:'50%',background:d.c,flexShrink:0}}),
-                  h('div',{style:{flex:1,fontSize:12,color:C.muted}},d.n),
-                  h('div',{style:{fontSize:12,fontWeight:700,color:d.c,fontFamily:"'DM Mono',monospace"}},d.cnt),
+                  h('div',{style:{flex:1,fontSize:13,color:C.muted}},d.n),
+                  h('div',{style:{fontSize:13,fontWeight:700,color:d.c,fontFamily:"'DM Mono',monospace"}},d.cnt),
                   h('div',{style:{width:80,height:4,background:'rgba(255,255,255,0.07)',borderRadius:2,overflow:'hidden'}},
                     h('div',{style:{width:((d.cnt/vendorMaster.length)*100)+'%',height:'100%',background:d.c,borderRadius:2}})
                   )
