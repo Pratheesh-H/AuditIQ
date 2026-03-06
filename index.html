@@ -2357,14 +2357,17 @@ function Dashboard(props){
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}},
       [
         {l:'Total Billed',v:approved.length?fmt(totalBilled):'—',sub:approved.length?approved.length+' invoices approved':'No invoices yet',c:C.text},
-        {l:'Correct Amount',v:(approved.length&&totalOvercharge>0)?fmt(correctAmount):'—',sub:totalOvercharge>0?'After removing overcharges':aiResults?'No overcharges found':'Run AI Audit to analyse',c:C.green},
-        {l:'Total Overcharge',v:totalOvercharge>0?fmt(totalOvercharge):(aiResults?'—':'?'),sub:totalOvercharge>0?findings.length+' findings':aiResults?'Clean audit':'AI audit pending',c:totalOvercharge>0?C.red:aiResults?C.green:C.faint},
+        {l:'Correct Amount',v:approved.length?(totalOvercharge>0?fmt(correctAmount):fmt(totalBilled)):'—',sub:totalOvercharge>0?'After removing overcharges':aiResults?'No overcharges — full amount correct':'Run AI Audit to analyse',c:C.green},
+        {l:'Total Overcharge',v:totalOvercharge>0?fmt(totalOvercharge):(aiResults?'₹0.00':'?'),sub:totalOvercharge>0?findings.length+' findings':aiResults?'Clean audit — no issues':'AI audit pending',c:totalOvercharge>0?C.red:aiResults?C.green:C.faint},
         {l:'Vendors',v:vendorMaster.length||'—',sub:vendorMaster.length?Object.keys(cats).length+' categories':'No vendors yet',c:'#8B5CF6'},
       ].map(function(k,i){
         var vbCls=i===0?'vb-kpi-blue':i===2?'vb-kpi-red':i===1?'vb-kpi-green':'vb-kpi-amber';
         var glowCol=i===0?'rgba(59,130,246,0.45)':i===2?'rgba(239,68,68,0.45)':i===1?'rgba(16,185,129,0.45)':'rgba(245,158,11,0.45)';
-        var valCol=i===0?'#93C5FD':i===2?'#FCA5A5':i===1?'#6EE7B7':'#FCD34D';
-        var valShadow=i===0?'0 0 28px rgba(59,130,246,0.55)':i===2?'0 0 28px rgba(239,68,68,0.55)':i===1?'0 0 28px rgba(16,185,129,0.55)':'0 0 28px rgba(245,158,11,0.55)';
+        // Map semantic colour (k.c) to bright pastel equivalent for dark backgrounds
+        var colMap={'#EF4444':'#FCA5A5','#DC2626':'#FCA5A5','#10B981':'#6EE7B7','#059669':'#6EE7B7','#3B82F6':'#93C5FD','#2563EB':'#93C5FD','#8B5CF6':'#C4B5FD','#7C3AED':'#C4B5FD','#E2E8F0':'rgba(255,255,255,0.9)','#0F172A':'rgba(255,255,255,0.9)'};
+        var cardAccent=i===0?'#93C5FD':i===1?'#6EE7B7':i===2?'#FCA5A5':'#FCD34D';
+        var valCol=colMap[k.c]||cardAccent;
+        var valShadow='0 0 28px '+(glowCol);
         var lblCol=i===0?'rgba(147,197,253,0.55)':i===2?'rgba(252,165,165,0.55)':i===1?'rgba(110,231,183,0.55)':'rgba(253,211,77,0.55)';
         return h('div',{key:k.l,className:'card fu '+vbCls,style:{animationDelay:i*50+'ms',padding:'20px 22px',position:'relative',overflow:'hidden'}},
           h('div',{className:'vb-glow',style:{bottom:'-25px',right:'-20px',width:'110px',height:'110px',background:glowCol}}),
@@ -2449,7 +2452,16 @@ function Dashboard(props){
             months[key]=(months[key]||0)+tot;
           });
           var keys=Object.keys(months).sort().slice(-6);
-          if(!keys.length)return null;
+          if(!keys.length)return h('div',{className:'card vb-card-blue',style:{position:'relative',overflow:'hidden'}},
+            h('div',{className:'vb-glow',style:{bottom:'-40px',left:'-30px',width:'170px',height:'170px',background:'rgba(59,130,246,0.12)'}}),
+            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Spend Trend & Forecast'),
+            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:16}},'Actual spend + 2-month projection'),
+            h('div',{style:{position:'relative',zIndex:1,textAlign:'center',padding:'28px 0 20px'}},
+              h('div',{style:{fontSize:28,marginBottom:8}},'📊'),
+              h('div',{style:{fontSize:12,color:C.muted,fontWeight:500}},'Awaiting invoice dates'),
+              h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},'Ensure invoices have a date field for trend data')
+            )
+          );
           var vals=keys.map(function(k){return months[k];});
           var maxV=Math.max.apply(null,vals)||1;
           // Simple linear forecast for next 2 months
