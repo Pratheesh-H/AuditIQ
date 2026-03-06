@@ -6,7 +6,6 @@
 <title>AuditIQ</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;overflow:hidden}
@@ -104,9 +103,6 @@ const IC={
   search:'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0',
   edit:'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
   download:'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3',
-  chart:'M18 20V10M12 20V4M6 20v-6',
-  trendUp:'M23 6l-9.5 9.5-5-5L1 18',
-  send:'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z',
 };
 
 function Ico({d,sz,s}){
@@ -831,6 +827,81 @@ function extractTaxAmt(v){
 // ══════════════════════════════════════════════════════════════════
 //  AUDIT FINDINGS
 // ══════════════════════════════════════════════════════════════════
+async function runGroqOversight(invoices,contracts,rateCards,vmData,ruleFindings){
+  var AUDIT_FIELDS=['Vendor Name','Vendor GSTIN','Invoice Number','Invoice Total',
+    'Taxable Amount','CGST','SGST','IGST','Rate per Unit','Quantity',
+    'HSN / SAC Code','IFSC Code','Invoice Date','Contracted Rate','Rate Card Reference'];
+  function af(ex){
+    if(!ex||!ex.fields)return{};
+    var o={};
+    ex.fields.filter(function(x){return !x.isMeta&&x.conf>0&&AUDIT_FIELDS.indexOf(x.field)!==-1;})
+      .forEach(function(x){o[x.field]=x.value;});
+    return o;
+  }
+  // Only send key fields to reduce tokens ~60%
+  // Build a plain-English audit narrative using AI
+  var rulesSummary=ruleFindings.map(function(f){
+    return {type:f.type,title:f.title,vendor:f.vendorName,amount:f.overchargeAmt,desc:f.desc};
+  });
+  var prompt='You are a senior Indian GST and procurement auditor writing a board-level audit report.\n'
+    +'I have already detected the following rule-based findings:\n'+JSON.stringify(rulesSummary)+'\n\n'
+    +'Invoice data:\n'+JSON.stringify(invoices.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
+    +'\n\nContracts/Rate cards:\n'+JSON.stringify(contracts.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
+    +'\n\nVendor master:\n'+JSON.stringify(vmData.map(function(v){return{name:v.name,gstin:v.gstin};}))
+    +'\n\nReturn ONLY a valid JSON object (no markdown) with this exact structure:\n'
+    +'{\n'
+    +'  "overallSummary": "3-5 sentence plain English overview of the entire audit. Mention total risk, key vendors flagged, and overall health of the invoice set. Write as if explaining to a finance manager who is not a GST expert.",\n'
+    +'  "findingNarratives": [\n'
+    +'    {\n'
+    +'      "findingTitle": "exact title from rule findings above",\n'
+    +'      "plainEnglish": "2-4 sentence explanation in simple language. Explain what went wrong, why it matters, what money is at risk, and what the vendor may have done incorrectly. Avoid jargon.",\n'
+    +'      "riskImpact": "One sentence on financial or compliance risk if not acted upon.",\n'
+    +'      "immediateStep": "One clear sentence on what the accounts team should do TODAY."\n'
+    +'    }\n'
+    +'  ],\n'
+    +'  "additionalFindings": [\n'
+    +'    {"type":"COMPLIANCE","severity":"HIGH","title":"...","vendorName":"...","invoiceFile":"...","overchargeAmt":0,"desc":"...","action":"...","plainEnglish":"..."}\n'
+    +'  ]\n'
+    +'}\n'
+    +'additionalFindings = any NEW issues you spot that the rules missed (fuzzy name match, missing fields, contract violations). Empty array if none.';
+  var resp=await fetch('/api/groq',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'user',content:prompt}],max_tokens:2048,temperature:0.1})});
+  if(!resp.ok){var et=await resp.text().catch(function(){return'';});throw new Error('Groq '+resp.status+': '+et.slice(0,200));}
+  var data=await resp.json();
+  var raw='';try{raw=data.choices[0].message.content||'';}catch(e){raw='';}
+  raw=raw.trim().replace(/^```json\s*/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+  var parsed;
+  try{parsed=JSON.parse(raw);}
+  catch(e){
+    var mo=raw.match(/\{[\s\S]*\}/);
+    if(mo){try{parsed=JSON.parse(mo[0]);}catch(e2){parsed=null;}}
+  }
+  if(!parsed||typeof parsed!=='object'){return{summary:'',narratives:{},extras:[]};}
+  // Build narratives lookup keyed by finding title
+  var narratives={};
+  (parsed.findingNarratives||[]).forEach(function(n){
+    if(n&&n.findingTitle){
+      narratives[n.findingTitle]={
+        plainEnglish:String(n.plainEnglish||''),
+        riskImpact:String(n.riskImpact||''),
+        immediateStep:String(n.immediateStep||'')
+      };
+    }
+  });
+  // Extra findings AI spotted beyond rule-engine
+  var extras=(parsed.additionalFindings||[]).map(function(it,i){return{
+    id:'ai-'+Date.now()+'-'+i,
+    type:String(it.type||'COMPLIANCE').toUpperCase(),
+    severity:['CRITICAL','HIGH','MEDIUM','LOW'].includes(String(it.severity||'').toUpperCase())?String(it.severity).toUpperCase():'MEDIUM',
+    title:String(it.title||'AI Finding'),vendorName:String(it.vendorName||'Unknown'),
+    overchargeAmt:parseFloat(it.overchargeAmt)||0,
+    desc:String(it.desc||''),plainEnglish:String(it.plainEnglish||''),
+    action:String(it.action||''),file:String(it.invoiceFile||''),ref:'AI Analysis',isAI:true};});
+  return{summary:String(parsed.overallSummary||''),narratives:narratives,extras:extras};
+}
+
 function AuditFindings(props){
   var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster,config=props.config;
   var aiRes=props.aiResults||null;
@@ -933,51 +1004,37 @@ function AuditFindings(props){
       });
       var vmData=vendorMaster.map(function(v){return {name:v.name,gstin:v.gstin,ifsc:v.ifsc};});
 
-      var prompt='You are a senior Indian GST and procurement auditor. Study the data below and return ONLY a valid JSON object — no markdown, no extra text.\n\n'
+      var prompt='You are a senior Indian GST and procurement auditor. Analyse the following invoice data carefully and return ONLY a valid JSON object — no markdown, no explanation.\n\n'
         +'INVOICES:\n'+JSON.stringify(invoiceData,null,1)+'\n\n'
-        +(contractData.length?'CONTRACTS / RATE CARDS:\n'+JSON.stringify(contractData.concat(rateData),null,1)+'\n\n':'')
+        +(contractData.length?'CONTRACTS/RATE CARDS:\n'+JSON.stringify(contractData.concat(rateData),null,1)+'\n\n':'')
         +(vmData.length?'VENDOR MASTER:\n'+JSON.stringify(vmData,null,1)+'\n\n':'')
-        +'AUDIT RULES — follow every step exactly:\n\n'
-        +'RULE 1 — GST CALCULATION:\n'
-        +'  Step 1: Read Taxable Amount as a plain number (strip currency symbols, commas).\n'
-        +'  Step 2: Read each tax amount. A field like "9% — Rs.40,500" means the TAX AMOUNT is 40500, NOT the rate.\n'
-        +'  Step 3: Expected Total = Taxable Amount + CGST amount + SGST amount + IGST amount.\n'
-        +'  Step 4: Compare with Invoice Total. Flag CALC_ERROR only if |difference| > Rs.2. State both figures in desc.\n\n'
-        +'RULE 2 — GSTIN FORMAT:\n'
-        +'  Valid pattern: 2 digits + 5 uppercase letters + 4 digits + 1 letter + 1 alphanumeric + Z + 1 alphanumeric (15 chars total).\n'
-        +'  Flag GSTIN_FORMAT only if GSTIN is present but malformed, or completely missing from the invoice.\n\n'
-        +'RULE 3 — BANK / IFSC MISMATCH:\n'
-        +'  Compare IFSC in invoice against vendor master IFSC for the same vendor name.\n'
-        +'  Flag CRITICAL BANK_MISMATCH only if both values are present and they differ.\n\n'
-        +'RULE 4 — RATE OVERBILLING (most important — calculate carefully):\n'
-        +'  Step 1: Extract invoice_rate = "Rate per Unit" field from invoice (plain number, strip Rs/commas).\n'
-        +'  Step 2: Extract contracted_rate = matching rate from contract/rate card for the same vendor + item (plain number).\n'
-        +'  Step 3: Only proceed if BOTH values are clearly present. Do NOT guess or assume rates.\n'
-        +'  Step 4: Check if invoice_rate > contracted_rate * 1.05 (i.e. more than 5% above contracted).\n'
-        +'  Step 5: overcharge_per_unit = invoice_rate - contracted_rate (must be > 0).\n'
-        +'  Step 6: Extract quantity from invoice (plain number).\n'
-        +'  Step 7: overchargeAmt = overcharge_per_unit * quantity. Show working in desc field.\n'
-        +'  Step 8: DOUBLE-CHECK: overchargeAmt must be less than Invoice Total. If it equals or exceeds Invoice Total, you have misread a field — recheck and correct.\n'
-        +'  Example: invoice_rate=15500, contracted_rate=12500, qty=400 → overcharge/unit=3000, overchargeAmt=1200000. NOT 1600000.\n'
-        +'  Flag type RATE_OVERBILLING, severity HIGH.\n\n'
-        +'RULE 5 — DUPLICATE INVOICE:\n'
-        +'  Flag DUPLICATE only if the exact same Invoice Number string appears in more than one file.\n\n'
-        +'RULE 6 — MISSING CRITICAL FIELDS:\n'
-        +'  Flag MISSING_FIELD only if Invoice Total OR Vendor Name is completely absent from the invoice.\n\n'
-        +'RULE 7 — OTHER ANOMALIES:\n'
-        +'  Flag genuine anomalies only. Do not speculate. Every finding must cite specific field values from the data.\n\n'
-        +'CALCULATION DISCIPLINE:\n'
-        +'  - Strip all commas and currency symbols before arithmetic.\n'
-        +'  - Show your arithmetic in the desc field: e.g. "overcharge/unit = 15500-12500 = 3000; qty = 400; overchargeAmt = 3000*400 = 1200000".\n'
-        +'  - Never round up overchargeAmt. Use exact multiplication.\n'
-        +'  - If you are unsure of a number, do not flag the finding.\n\n'
-        +'Return ONLY this JSON (no markdown, no trailing commas):\n'
-        +'{"overallSummary":"3-5 sentence plain English overview for a finance manager — total invoices, key issues, total money at risk, overall health.",'
-        +'"findings":[{"type":"CALC_ERROR or COMPLIANCE or FRAUD or PRICING or RATE_OVERBILLING or DUPLICATE or GST_RATE or GSTIN_FORMAT or BANK_MISMATCH or MISSING_FIELD or OTHER",'
-        +'"severity":"CRITICAL or HIGH or MEDIUM or LOW","title":"Short title","vendorName":"vendor name","invoiceFile":"filename",'
-        +'"overchargeAmt":0,"desc":"Factual description showing exact field values and arithmetic",'
-        +'"plainEnglish":"2-3 sentence explanation for non-accountants","action":"Specific step the accounts team should take today"}]}\n'
-        +'If no issues found return empty findings array. Never invent findings. overchargeAmt must be a plain number (no symbols). Do not flag rounding differences under Rs.2.';
+        +'AUDIT RULES TO CHECK:\n'
+        +'1. GST CALCULATION: Verify Invoice Total = Taxable Amount + CGST amount + SGST amount + IGST amount (within Rs.1 tolerance). Parse amounts carefully — fields like "9% — Rs.40500.00" mean the tax amount is Rs.40500.\n'
+        +'2. GSTIN FORMAT: Must match pattern: 2 digits + 5 uppercase letters + 4 digits + 1 letter + 1 alphanumeric + Z + 1 alphanumeric.\n'
+        +'3. BANK MISMATCH: If vendor IFSC in invoice differs from vendor master IFSC for the same vendor — flag as CRITICAL fraud risk.\n'
+        +'4. RATE OVERBILLING: If invoice rate per unit exceeds contracted rate or rate card rate for the same vendor by more than 5%.\n'
+        +'5. DUPLICATE INVOICE: Same invoice number appearing on multiple files.\n'
+        +'6. MISSING CRITICAL FIELDS: Flag if Invoice Total, Vendor Name, or Vendor GSTIN is missing.\n'
+        +'7. ANY OTHER ANOMALY you notice as an experienced auditor.\n\n'
+        +'Return ONLY this JSON (no markdown):\n'
+        +'{\n'
+        +'  "overallSummary": "3-5 sentence plain English overview for a finance manager. Mention total invoices checked, key issues found, total money at risk, and overall audit health.",\n'
+        +'  "findings": [\n'
+        +'    {\n'
+        +'      "type": "CALC_ERROR|COMPLIANCE|FRAUD|PRICING|DUPLICATE|GST_RATE|MISSING_FIELD|OTHER",\n'
+        +'      "severity": "CRITICAL|HIGH|MEDIUM|LOW",\n'
+        +'      "title": "Short title of finding",\n'
+        +'      "vendorName": "vendor name or Unknown",\n'
+        +'      "invoiceFile": "filename",\n'
+        +'      "overchargeAmt": 0,\n'
+        +'      "desc": "Clear factual description of what is wrong and exact amounts involved",\n'
+        +'      "plainEnglish": "2-3 sentence simple explanation for non-accountants",\n'
+        +'      "action": "Specific action the accounts team should take TODAY"\n'
+        +'    }\n'
+        +'  ],\n'
+        +'  "findingNarratives": {}\n'
+        +'}\n'
+        +'If no issues found, return empty findings array. Be accurate — do NOT flag issues that do not exist.';
 
       var resp=await fetch('/api/groq',{
         method:'POST',headers:{'Content-Type':'application/json'},
@@ -1008,20 +1065,9 @@ function AuditFindings(props){
         isAI:true
       };});
 
-      // Build narratives lookup keyed by title so AI Explanation cards actually render
-      var narrativesMap={};
-      aiFindings.forEach(function(it){
-        if(it.title&&it.plainEnglish){
-          narrativesMap[it.title]={
-            plainEnglish:it.plainEnglish,
-            riskImpact:'',
-            immediateStep:it.action||''
-          };
-        }
-      });
       setAiRes({
         summary:String(parsed.overallSummary||''),
-        narratives:narrativesMap,
+        narratives:{},
         extras:aiFindings
       });
       setAiDoneV(true);
@@ -1029,21 +1075,21 @@ function AuditFindings(props){
     setAiRunningV(false);
   }
   var SEV={CRITICAL:{c:C.red,o:0},HIGH:{c:C.amber,o:1},MEDIUM:{c:C.blue,o:2},LOW:{c:C.green,o:3}};
-  var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',RATE_OVERBILLING:'Rate Overbilling',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',GSTIN_FORMAT:'GSTIN Format',BANK_MISMATCH:'Bank Mismatch',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing Field',NAME_MISMATCH:'Name Mismatch',OTHER:'Other'};
+  var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing',NAME_MISMATCH:'Name Match'};
   var sorted=allFindings.slice().sort(function(a,b){return (SEV[a.severity]?SEV[a.severity].o:9)-(SEV[b.severity]?SEV[b.severity].o:9);});
   var counts={ALL:allFindings.length};
   Object.keys(TYPE_LABELS).forEach(function(k){counts[k]=0;});
   allFindings.forEach(function(f){if(counts[f.type]!==undefined)counts[f.type]++;});
   var totalOvercharge=allFindings.reduce(function(s,f){return s+(f.overchargeAmt||0);},0);
   var visible=filter==='ALL'?sorted:sorted.filter(function(f){return f.type===filter;});
-  var filterKeys=['ALL','FRAUD','RATE_OVERBILLING','CALC_ERROR','GST_RATE','GSTIN_FORMAT','BANK_MISMATCH','PRICING','SURCHARGE','DUPLICATE','COMPLIANCE','MISSING_FIELD','OTHER'];
+  var filterKeys=['ALL','FRAUD','CALC_ERROR','GST_RATE','PRICING','SURCHARGE','DUPLICATE','COMPLIANCE','CONTRACT_VIOLATION','PERIOD_VIOLATION','NAME_MISMATCH','MISSING_FIELD'];
 
   return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
     totalOvercharge>0&&approved.length>0?h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}},
       h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.red}},
         h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Total Overcharge Detected'),
         h('div',{style:{fontSize:22,fontWeight:800,color:C.red,fontFamily:"'DM Mono',monospace"}},'\u20B9'+totalOvercharge.toLocaleString('en-IN',{minimumFractionDigits:2})),
-        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},allFindings.length+' finding'+(allFindings.length!==1?'s':'')+' across '+approved.length+' invoices')
+        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},findings.length+' finding'+(findings.length!==1?'s':'')+' across '+approved.length+' invoices')
       ),
       h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.amber}},
         h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Critical / High Findings'),
@@ -1093,14 +1139,14 @@ function AuditFindings(props){
             aiSummary?h('div',{style:{background:'linear-gradient(135deg,rgba(139,92,246,0.12),rgba(109,40,217,0.06))',border:'1px solid rgba(139,92,246,0.3)',borderRadius:12,padding:'16px 20px',marginBottom:4}},
               h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10}},
                 h('span',{style:{fontSize:14}},'🧠'),
-                h('span',{style:{fontSize:13,fontWeight:700,color:'#8B5CF6'}},'AI Audit Summary')
+                h('span',{style:{fontSize:13,fontWeight:700,color:'#8B5CF6'}}),'AI Audit Summary'
               ),
               h('div',{style:{fontSize:13,color:C.text,lineHeight:1.8,fontStyle:'italic'}},'"'+aiSummary+'"')
             ):null,
             h('div',{style:{fontSize:12,color:C.muted,marginBottom:4}},visible.length+' finding'+(visible.length>1?'s':'')+' · '+approved.length+' invoice'+(approved.length>1?'s':'')+' audited'),
             visible.map(function(finding){
               var sev=SEV[finding.severity]||{c:C.muted};
-              var narrative=aiNarratives[finding.title]||(finding.plainEnglish?{plainEnglish:finding.plainEnglish,riskImpact:'',immediateStep:finding.action||''}:null);
+              var narrative=aiNarratives[finding.title]||null;
               return h('div',{key:finding.id,className:'card',style:{borderLeft:'3px solid '+(finding.isAI?'#8B5CF6':sev.c),padding:'0',overflow:'hidden'}},
                 // ── Header strip ──
                 h('div',{style:{padding:'14px 18px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)'}},
@@ -1443,503 +1489,604 @@ function Reports(props){
       var s1=document.createElement('script');
       s1.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
       s1.onload=function(){downloadPDF();};
-      s1.onerror=function(){alert('Could not load PDF library.');};
+      s1.onerror=function(){alert('Could not load PDF library. Check internet connection.');};
       document.head.appendChild(s1);
       return;
     }
+    // ── Show generating state ──────────────────────────────────────
     setGenerating(true);
 
-    /* ── raw data ─────────────────────────────────────────────── */
-    var _aiFindings=(props.aiResults&&props.aiResults.extras)||[];
+    // ── If AI results exist, generate executive summary via Groq ──
+    var _aiResults=props.aiResults||null;
+    var _aiSummary=_aiResults?(_aiResults.summary||''):'';
+    var _aiFindings=_aiResults?(_aiResults.extras||[]):[];
+    var _cfg=props.config||{};
+    var _vm=props.vendorMaster||[];
     var _uf=props.uploadedFiles||[];
     var _profile=props.profile||null;
     var _approved=_uf.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
     var _filtered=_approved.filter(function(f){
       if(scope==='VENDOR'&&vendor){
-        var fx=f.extraction.fields.find(function(x){return x.field==='Vendor Name'&&x.conf>0;});
+        var fx=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field==='Vendor Name'&&x.conf>0;});
         return fx?fx.value===vendor:false;
       }
       return true;
     });
+    function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
+    function pAmt(v){if(!v)return 0;var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);if(!tokens)return 0;var best=0;tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});return best;}
+    function fmtINR(n){if(!n||isNaN(n))return '\u20B90';if(n>=10000000)return '\u20B9'+(n/10000000).toFixed(2)+'Cr';if(n>=100000)return '\u20B9'+(n/100000).toFixed(2)+'L';return '\u20B9'+Math.round(n).toLocaleString('en-IN');}
 
-    function gf(ex,n){var f=ex&&ex.fields&&ex.fields.find(function(x){return x.field===n&&x.conf>0;});return f?f.value:null;}
-    function pa(v){if(!v)return 0;var t=String(v).match(/\d[\d,]*(?:\.\d+)?/g);if(!t)return 0;var b=0;t.forEach(function(x){var n=parseFloat(x.replace(/,/g,''));if(!isNaN(n)&&n>b)b=n;});return b;}
-    function fI(n){if(!n||isNaN(n))return '\u20B90.00';var a=Math.abs(n),s=n<0?'-':'';if(a>=10000000)return s+'\u20B9'+(a/10000000).toFixed(2)+'Cr';if(a>=100000)return s+'\u20B9'+(a/100000).toFixed(2)+'L';return s+'\u20B9'+a.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
+    var _totalBilled=_filtered.reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
+    var _totalTaxable=_filtered.reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Taxable Amount'));},0);
 
-    var totalBilled=_filtered.reduce(function(s,f){return s+pa(gf(f.extraction,'Invoice Total'));},0);
-    var totalTaxable=_filtered.reduce(function(s,f){return s+pa(gf(f.extraction,'Taxable Amount'));},0);
-    var totalCGST=_filtered.reduce(function(s,f){return s+pa(gf(f.extraction,'CGST'));},0);
-    var totalSGST=_filtered.reduce(function(s,f){return s+pa(gf(f.extraction,'SGST'));},0);
-    var totalIGST=_filtered.reduce(function(s,f){return s+pa(gf(f.extraction,'IGST'));},0);
-    var totalTax=totalCGST+totalSGST+totalIGST;
-
-    var rptFindings=_aiFindings.map(function(fd){
-      return {
-        type:String(fd.type||'FINDING'),
-        sev:String(fd.severity||'MEDIUM'),
-        vendor:String(fd.vendorName||'?'),
-        file:String(fd.file||fd.ref||''),
-        over:fd.overchargeAmt||0,
-        desc:String(fd.desc||fd.plainEnglish||''),
-        action:String(fd.action||''),
-        invoiceRate:fd.invoiceRate||0,
-        contractRate:fd.contractRate||0,
-        contractedAmt:fd.contractedAmt||0,
-      };
+    // Map AI findings scoped to vendor if needed
+    var rptFindings=_aiFindings.filter(function(fd){
+      if(scope==='VENDOR'&&vendor){return (fd.vendorName||'').toLowerCase()===(vendor||'').toLowerCase();}
+      return true;
+    }).map(function(fd){
+      return {type:String(fd.type||'FINDING'),sev:String(fd.severity||'MEDIUM'),vendor:String(fd.vendorName||'?'),file:String(fd.file||fd.ref||''),over:fd.overchargeAmt||0,desc:String(fd.desc||fd.plainEnglish||''),action:String(fd.action||'')};
     });
-    // duplicate check
+    // Duplicate check
     var invNos={};
-    _filtered.forEach(function(f){var n=gf(f.extraction,'Invoice Number');if(n){if(!invNos[n])invNos[n]=[];invNos[n].push(f);}});
+    _filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!invNos[n])invNos[n]=[];invNos[n].push(f);}});
     Object.keys(invNos).forEach(function(n){
       if(invNos[n].length>1){
-        var dA=invNos[n].reduce(function(s,f){return s+pa(gf(f.extraction,'Invoice Total'));},0);
-        var sA=pa(gf(invNos[n][0].extraction,'Invoice Total'));
-        if(!rptFindings.some(function(fd){return fd.type==='DUPLICATE'&&fd.desc.includes(n);}))
-          rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gf(invNos[n][0].extraction,'Vendor Name')||'?',
-            file:invNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,
-            desc:'Invoice "'+n+'" appears '+invNos[n].length+' times.',
-            action:'Withhold duplicate payment. Pay only the first occurrence.'});
+        var dA=invNos[n].reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
+        var sA=pAmt(gfx(invNos[n][0].extraction,'Invoice Total'));
+        var already=rptFindings.some(function(fd){return fd.type==='DUPLICATE'&&fd.desc&&fd.desc.includes(n);});
+        if(!already)rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(invNos[n][0].extraction,'Vendor Name')||'?',file:invNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,desc:'Invoice "'+n+'" appears '+invNos[n].length+' times.',action:'Block duplicates. Pay only once.'});
       }
     });
 
     var totalOver=rptFindings.reduce(function(s,f){return s+(f.over||0);},0);
-    var overPct=totalBilled>0?((totalOver/totalBilled)*100).toFixed(1):'0.0';
+    var overRate=_totalBilled>0?((totalOver/_totalBilled)*100).toFixed(1):'0.0';
+
+    // Vendor spend map
     var vSpend={};
-    _filtered.forEach(function(f){var vn=gf(f.extraction,'Vendor Name')||'Unknown';vSpend[vn]=(vSpend[vn]||0)+pa(gf(f.extraction,'Invoice Total'));});
-    var vList=Object.keys(vSpend).map(function(n){return{n:n,v:vSpend[n]};}).sort(function(a,b){return b.v-a.v;});
+    _filtered.forEach(function(f){var vn=gfx(f.extraction,'Vendor Name')||'Unknown';vSpend[vn]=(vSpend[vn]||0)+pAmt(gfx(f.extraction,'Invoice Total'));});
+    var vSpendList=Object.keys(vSpend).map(function(n){return {n:n,v:vSpend[n]};}).sort(function(a,b){return b.v-a.v;});
+    var maxVSpend=vSpendList.length?vSpendList[0].v:1;
+
+    // Severity counts
     var sevCounts={CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
     rptFindings.forEach(function(fd){var s=(fd.sev||'MEDIUM').toUpperCase();if(sevCounts[s]!==undefined)sevCounts[s]++;});
-    var flaggedSet=new Set(rptFindings.map(function(fd){return fd.file;}));
 
-    var primaryVendor=vList.length?vList[0].n:(scope==='VENDOR'&&vendor?vendor:'All Vendors');
-    var auditScore=totalBilled>0?Math.round(((totalBilled-totalOver)/totalBilled-1)*100):0;
-    var overallStatus=sevCounts.CRITICAL>0?'CRITICAL DISCREPANCY':sevCounts.HIGH>0?'HIGH RISK':rptFindings.length>0?'NEEDS REVIEW':'CLEARED';
-    var dt=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
-    var arId='#AR-'+new Date().toISOString().slice(0,10);
+    // Flagged invoice set
+    var flaggedFiles=new Set(rptFindings.map(function(fd){return fd.file;}));
 
-    // per-invoice compliance data from first invoice
-    var f0=_filtered[0];
-    var gstin=f0?gf(f0.extraction,'Vendor GSTIN')||'—':'—';
-    var bankAcc=f0?gf(f0.extraction,'Bank Account')||'—':'—';
-    var poRef=f0?gf(f0.extraction,'PO / Work Order Ref')||'—':'—';
-    var invNum0=f0?gf(f0.extraction,'Invoice Number')||'—':'—';
-    var hasGstin=gstin!=='—';
-    var hasBankAcc=bankAcc!=='—';
-    var hasPO=poRef!=='—';
+    function buildPDF(execSummary){
+      try{
+        var doc=new JsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+        var pw=doc.internal.pageSize.getWidth(); // 210
+        var ph=doc.internal.pageSize.getHeight(); // 297
+        var mg=14;
+        var y=0;
+        var dt=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
 
-    try{
-      var doc=new JsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-      var pw=doc.internal.pageSize.getWidth();   // 210
-      var ph=doc.internal.pageSize.getHeight();  // 297
-      var mg=14, cw=pw-mg*2;                     // content width 182mm
-      var y=0;
+        // ── COLOUR PALETTE ─────────────────────────────────────────
+        var COL={
+          navy:[13,27,42],    navyMid:[26,47,68],   navyLight:[30,64,96],
+          blue:[30,111,165],  blueLight:[74,144,196],
+          red:[192,57,43],    redLight:[253,236,234],redBorder:[245,183,177],
+          green:[26,122,74],  greenLight:[234,250,241],
+          amber:[183,121,15], amberLight:[255,253,240],amberBorder:[240,217,160],
+          text:[13,27,42],    textMid:[44,62,80],    textLight:[106,130,153],
+          border:[228,234,240], bg:[247,249,251],    white:[255,255,255],
+          grey:[238,242,246],
+        };
 
-      /* ── colour tokens ──────────────────────────────────── */
-      var INK =[15,23,42];
-      var MID =[71,85,105];
-      var SUB =[148,163,184];
-      var BDR =[226,232,240];
-      var BG  =[248,250,252];
-      var WHT =[255,255,255];
-      var NVY =[15,23,42];
-      var BLU =[37,99,235];
-      var BLT =[219,234,254];
-      var GRN =[22,163,74];
-      var GRL =[220,252,231];
-      var GRD =[21,128,61];
-      var RED =[220,38,38];
-      var RDL =[254,226,226];
-      var RDD =[185,28,28];
-      var AMB =[217,119,6];
-      var AML =[254,243,199];
-      var AMD =[180,83,9];
+        function setFill(c){doc.setFillColor(c[0],c[1],c[2]);}
+        function setDraw(c){doc.setDrawColor(c[0],c[1],c[2]);}
+        function setTxt(c){doc.setTextColor(c[0],c[1],c[2]);}
+        function rect(x,y,w,h,style){doc.rect(x,y,w,h,style||'F');}
+        function rrect(x,y,w,h,r,style){doc.roundedRect(x,y,w,h,r,r,style||'F');}
+        function line(x1,y1,x2,y2){doc.line(x1,y1,x2,y2);}
 
-      function sf(c){doc.setFillColor(c[0],c[1],c[2]);}
-      function sd(c){doc.setDrawColor(c[0],c[1],c[2]);}
-      function st(c){doc.setTextColor(c[0],c[1],c[2]);}
-      function R(x,y,w,h){doc.rect(x,y,w,h,'F');}
-      function RD2(x,y,w,h){sf(BDR);doc.setLineWidth(0.2);sd(BDR);doc.rect(x,y,w,h,'FD');}
-      function RR(x,y,w,h,r,s){doc.roundedRect(x,y,w,h,r,r,s||'F');}
-      function LN(x1,y1,x2,y2){doc.line(x1,y1,x2,y2);}
-      function T(s,x,yp,o){doc.text(String(s||''),x,yp,o||{});}
-      function B(sz){doc.setFont('helvetica','bold');doc.setFontSize(sz);}
-      function N(sz){doc.setFont('helvetica','normal');doc.setFontSize(sz);}
-
-      /* ── footer (called after all pages drawn) ──────────── */
-      function footer(pg){
-        var tot=doc.internal.getNumberOfPages();
-        doc.setPage(pg);
-        sf(BG);R(0,ph-10,pw,10);
-        sd(BDR);doc.setLineWidth(0.2);LN(mg,ph-10,pw-mg,ph-10);
-        N(6.5);st(SUB);
-        T('AuditIQ  \u00B7  Audit Exception Report  \u00B7  Confidential',mg,ph-4);
-        T('Page '+pg+' / '+tot,pw-mg,ph-4,{align:'right'});
-        T(dt,pw/2,ph-4,{align:'center'});
-      }
-
-      /* ── page overflow guard ────────────────────────────── */
-      function np(yp,need){
-        if(yp+need>ph-13){
-          footer(doc.internal.getNumberOfPages());
-          doc.addPage();
-          sf(NVY);R(0,0,pw,11);
-          B(8);st([210,225,245]);T('AuditIQ  \u2014  Audit Exception Report',mg,8);
-          N(6.5);st(SUB);T('continued',pw-mg,8,{align:'right'});
-          return 17;
+        function sectionHeader(title, yp){
+          // Left accent bar
+          setFill(COL.blue);rect(mg,yp,2,5);
+          doc.setFont('helvetica','bold');doc.setFontSize(10);setTxt(COL.navy);
+          doc.text(title,mg+5,yp+4);
+          setDraw(COL.border);doc.setLineWidth(0.3);
+          var tw=doc.getTextWidth(title);
+          line(mg+7+tw,yp+2,pw-mg,yp+2);
+          return yp+10;
         }
-        return yp;
-      }
 
-      /* ── section heading ────────────────────────────────── */
-      function sec(num,title,yp){
-        yp=np(yp,13);
-        sf(BG);sd(BDR);doc.setLineWidth(0.2);doc.roundedRect(mg,yp,cw,8,1,1,'FD');
-        sf(BLU);R(mg,yp,3,8);
-        B(8.5);st(INK);T(num+'  '+title,mg+7,yp+5.8);
-        return yp+12;
-      }
+        function pageCheck(yp,need){
+          if(yp+need>ph-16){
+            addFooter(doc.internal.getNumberOfPages());
+            doc.addPage();
+            yp=drawSecondaryHeader()+4;
+          }
+          return yp;
+        }
 
-      /* ═══════════════════════════════════════════════════════
-         COVER BANNER
-      ═══════════════════════════════════════════════════════ */
-      sf(NVY);R(0,0,pw,26);
-      sf(BLU);R(0,0,4,26);                              // blue left stripe
-      B(15);st([228,240,255]);T('AuditIQ',mg+2,16);
-      N(7);st([130,155,190]);T('AI Invoice Audit Platform',mg+2,22);
-      N(7);st([130,155,190]);T(dt,pw-mg,22,{align:'right'});
-      // pill
-      sf([30,48,100]);RR(pw-mg-48,6,46,9,2,'F');
-      B(7);st([160,200,250]);T('Audit Exception Report',pw-mg-24,12,{align:'center'});
-      y=32;
+        function drawSecondaryHeader(){
+          setFill(COL.navy);rect(0,0,pw,14);
+          doc.setFont('helvetica','bold');doc.setFontSize(11);
+          setTxt([232,244,253]);doc.text('Audit',mg,10);
+          setTxt(COL.blueLight);doc.text('IQ',mg+15,10);
+          doc.setFont('helvetica','normal');doc.setFontSize(7);
+          setTxt([255,255,255,0.4]);
+          doc.setTextColor(160,180,200);
+          doc.text('AI Invoice Auditor \u00B7 Confidential Audit Report \u00B7 Continued',mg+25,10);
+          // Accent gradient line
+          setFill(COL.blue);rect(0,14,pw*0.4,1.5);
+          setFill(COL.blueLight);rect(pw*0.4,14,pw*0.2,1.5);
+          setFill([247,249,251]);rect(pw*0.6,14,pw*0.4,1.5);
+          return 20;
+        }
 
-      /* ═══════════════════════════════════════════════════════
-         TITLE BLOCK  — report ID / vendor / status / recovery
-      ═══════════════════════════════════════════════════════ */
-      sf(WHT);sd(BDR);doc.setLineWidth(0.3);RR(mg,y,cw,22,1.5,'FD');
-      sf(BLU);RR(mg,y,4,22,1.5,1.5,'F');
+        function addFooter(pageNum){
+          var totalPages=doc.internal.getNumberOfPages();
+          doc.setPage(pageNum);
+          setFill(COL.bg);rect(0,ph-11,pw,11);
+          setDraw(COL.border);doc.setLineWidth(0.3);line(mg,ph-11,pw-mg,ph-11);
+          doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt(COL.textLight);
+          doc.text('AuditIQ \u00B7 Confidential Audit Report \u00B7 Do Not Distribute',mg,ph-5);
+          doc.text('Page '+pageNum+' of '+totalPages,pw-mg,ph-5,{align:'right'});
+        }
 
-      B(11);st(INK);T('\uD83D\uDCC4  Audit Exception Report: '+arId,mg+8,y+8);
-      N(7.5);st(MID);T('Vendor: '+primaryVendor,mg+8,y+14);
-      N(7);st(SUB);T(_filtered.length+' invoice'+(+_filtered.length!==1?'s':'')+' reviewed',mg+8,y+19.5);
+        // ════════════════════════════════════════════════
+        // PAGE 1
+        // ════════════════════════════════════════════════
 
-      // status badge
-      var stC=overallStatus==='CRITICAL DISCREPANCY'?RED:overallStatus==='HIGH RISK'?AMB:overallStatus==='NEEDS REVIEW'?AMB:GRN;
-      var stBg=overallStatus==='CRITICAL DISCREPANCY'?RDL:overallStatus==='HIGH RISK'?AML:overallStatus==='NEEDS REVIEW'?AML:GRL;
-      sf(stBg);sd(stC);doc.setLineWidth(0.3);RR(pw-mg-56,y+4,54,10,2,'FD');
-      B(7.5);st(stC);
-      var stIcon=overallStatus==='CRITICAL DISCREPANCY'?'\uD83D\uDD34 ':overallStatus==='HIGH RISK'?'\uD83D\uDFE0 ':'\u2705 ';
-      T(stIcon+overallStatus,pw-mg-29,y+10.5,{align:'center'});
-      y+=26;
+        // ── HEADER ──────────────────────────────────────
+        setFill(COL.navy);rect(0,0,pw,32);
+        // Grid texture
+        doc.setLineWidth(0.1);setDraw([255,255,255]);doc.setGState&&doc.setGState(new doc.GState({opacity:0.03}));
+        for(var gx=0;gx<pw;gx+=8){line(gx,0,gx,32);}
+        for(var gy=0;gy<32;gy+=8){line(0,gy,pw,gy);}
+        if(doc.setGState){doc.setGState(new doc.GState({opacity:1}));}
+        doc.setLineWidth(0.3);
 
-      // recovery potential bar
-      if(totalOver>0){
-        sf(RDL);sd(RED);doc.setLineWidth(0.3);RR(mg,y,cw,11,1.5,'FD');
-        sf(RED);RR(mg,y,4,11,1.5,1.5,'F');
-        B(7);st(RDD);T('Recovery Potential:',mg+8,y+7);
-        B(10);st(RED);T(fI(totalOver)+' (Incl. GST)',mg+50,y+7);
-        N(7);st(MID);T(rptFindings.length+' finding'+(rptFindings.length!==1?'s':'')+' identified',pw-mg-2,y+7,{align:'right'});
-        y+=15;
-      } else {
-        sf(GRL);sd(GRN);doc.setLineWidth(0.25);RR(mg,y,cw,10,1.5,'FD');
-        sf(GRN);RR(mg,y,4,10,1.5,1.5,'F');
-        B(8);st(GRD);T('\u2713  No overcharge detected \u2014 all amounts within contracted limits',pw/2,y+6.5,{align:'center'});
-        y+=14;
-      }
+        // Logo
+        doc.setFont('helvetica','bold');doc.setFontSize(22);
+        setTxt([232,244,253]);doc.text('Audit',mg,21);
+        setTxt(COL.blueLight);doc.text('IQ',mg+27,21);
+        doc.setFont('helvetica','normal');doc.setFontSize(7.5);
+        setTxt([180,200,215]);doc.text('AI Invoice Auditor  \u00B7  Confidential Audit Report',mg,27);
 
-      /* ═══════════════════════════════════════════════════════
-         SECTION 1 — EXECUTIVE SUMMARY
-      ═══════════════════════════════════════════════════════ */
-      y=sec('1.','Executive Summary',y);
+        // AI chip
+        var chipX=mg;var chipY=30;
+        setFill([74,144,196,0.12]);
+        setDraw(COL.blueLight);doc.setLineWidth(0.4);
+        // small dot + text
+        setFill(COL.blueLight);rrect(chipX,chipY-3.5,3,3,1,'F');
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.blueLight);
+        doc.text('AI Audit \u00B7 Groq llama-3.3-70b',chipX+4.5,chipY-0.8);
 
-      // 3-column KPI row
-      var kw=(cw-8)/3;
-      var kpis=[
-        {l:'Total Billed Amount',v:fI(totalBilled),c:BLU},
-        {l:'Contracted Amount (Excl. Tax)',v:totalTaxable>0?fI(totalTaxable):'—',c:MID},
-        {l:'Audit Health Score',v:(auditScore>0?'+':'')+auditScore+'%',c:auditScore<-20?RED:auditScore<0?AMB:GRN},
-      ];
-      kpis.forEach(function(k,i){
-        var kx=mg+i*(kw+4);
-        sf(BG);sd(BDR);doc.setLineWidth(0.2);RR(kx,y,kw,18,1,'FD');
-        sf(k.c);R(kx,y,kw,2.5);
-        N(6.5);st(SUB);T(k.l,kx+kw/2,y+8,{align:'center'});
-        B(10);st(k.c);T(k.v,kx+kw/2,y+15,{align:'center'});
-      });
-      y+=23;
+        // Date/inv right
+        doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt([160,180,200]);
+        doc.text('Date Generated',pw-mg,17,{align:'right'});
+        doc.setFont('helvetica','bold');doc.setFontSize(12);setTxt([232,244,253]);
+        doc.text(dt,pw-mg,24,{align:'right'});
+        doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt([160,180,200]);
+        doc.text(_filtered.length+' invoices  \u00B7  '+(_filtered.length?'All Vendors':'No data'),pw-mg,29,{align:'right'});
 
-      // primary issue line
-      if(rptFindings.length>0){
-        var pi=rptFindings[0];
-        y=np(y,14);
-        sf(RDL);sd(RED);doc.setLineWidth(0.2);RR(mg,y,cw,12,1,'FD');
-        sf(RED);R(mg,y,3,12);
-        B(7);st(RDD);T('Primary Issue:',mg+6,y+5.5);
-        N(7.5);st(INK);
-        var piTxt=doc.splitTextToSize(pi.type+(pi.desc?' \u2014 '+pi.desc.slice(0,100):''),cw-46);
-        T(piTxt[0]||'',mg+38,y+5.5);
-        N(6.5);st(MID);T('Vendor: '+pi.vendor,mg+6,y+10);
-        if(pi.over>0){B(7);st(RED);T(fI(pi.over)+' at risk',pw-mg-2,y+10,{align:'right'});}
-        y+=17;
-      }
+        // Accent gradient bar
+        setFill(COL.blue);rect(0,32,pw*0.4,2);
+        setFill(COL.blueLight);rect(pw*0.4,32,pw*0.2,2);
+        setFill([247,249,251]);rect(pw*0.6,32,pw*0.4,2);
 
-      /* ═══════════════════════════════════════════════════════
-         SECTION 2 — DISCREPANCY BREAKDOWN
-      ═══════════════════════════════════════════════════════ */
-      y=sec('2.','Discrepancy Breakdown',y);
-
-      if(rptFindings.length===0){
-        y=np(y,11);
-        sf(GRL);sd(GRN);doc.setLineWidth(0.2);RR(mg,y,cw,10,1,'FD');
-        B(8);st(GRD);T('\u2713  No discrepancies found \u2014 all invoices passed audit checks',pw/2,y+6.5,{align:'center'});
-        y+=14;
-      } else {
-        // table header
-        var dc=[55,30,30,27,cw-55-30-30-27];
-        var dh=['Item Description','Invoice Rate','Contract Rate','Variance','Impact'];
-        var drh=7.5;
-        y=np(y,drh+2);
-        sf(INK);R(mg,y,cw,drh);
-        B(6.5);st(WHT);
-        var dhx=mg;
-        dh.forEach(function(h,i){
-          var al=i>0?'right':'left';
-          T(h,al==='right'?dhx+dc[i]-2:dhx+2,y+5.5,{align:al});
-          dhx+=dc[i];
+        // ── META ROW ────────────────────────────────────
+        setFill(COL.bg);rect(0,34,pw,14);
+        setDraw(COL.border);doc.setLineWidth(0.3);line(0,48,pw,48);
+        var metas=[
+          {l:'Prepared By',v:_profile?_profile.name:'—'},
+          {l:'Organisation',v:_profile?_profile.firm:'—'},
+          {l:'Audit Period',v:dt},
+          {l:'Report Scope',v:scope==='VENDOR'&&vendor?vendor:'All Vendors'},
+        ];
+        var mw=(pw-mg*2)/4;
+        metas.forEach(function(m,i){
+          var mx=mg+i*mw;
+          if(i>0){setDraw(COL.border);line(mx,36,mx,46);}
+          doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+          doc.text(m.l.toUpperCase(),mx+(i>0?4:0),40);
+          doc.setFont('helvetica','bold');doc.setFontSize(8.5);setTxt(COL.text);
+          doc.text(String(m.v||'—').slice(0,22),mx+(i>0?4:0),46);
         });
-        y+=drh;
 
-        rptFindings.forEach(function(fd,ri){
-          var descLines=doc.splitTextToSize(fd.type+(fd.desc?' \u2014 '+fd.desc.slice(0,55):''),dc[0]-4);
-          var rowH=Math.max(drh,descLines.length*4+4);
-          y=np(y,rowH+1);
+        y=54;
+
+        // ── KPI CARDS ───────────────────────────────────
+        y=sectionHeader('Financial Overview',y);
+        var kpiW=(pw-mg*2-9)/4;
+        var kpis=[
+          {l:'TOTAL BILLED',   v:fmtINR(_totalBilled), sub:_filtered.length+' invoices', topC:COL.blue,   valC:COL.blue},
+          {l:'TOTAL OVERCHARGE',v:totalOver>0?fmtINR(totalOver):'None', sub:rptFindings.length+' findings', topC:totalOver>0?COL.red:COL.green, valC:totalOver>0?COL.red:COL.green},
+          {l:'CORRECT AMOUNT', v:fmtINR(_totalBilled-totalOver), sub:'After overcharges', topC:COL.green,  valC:COL.green},
+          {l:'OVERCHARGE RATE',v:overRate+'%', sub:'Of total billed', topC:COL.amber, valC:COL.amber},
+        ];
+        kpis.forEach(function(k,i){
+          var kx=mg+i*(kpiW+3);
+          setDraw(COL.border);doc.setLineWidth(0.3);
+          setFill(COL.white);rrect(kx,y,kpiW,20,1,'FD');
+          // Top colour bar
+          setFill(k.topC);rect(kx,y,kpiW,2);
+          doc.setFont('helvetica','normal');doc.setFontSize(6);setTxt(COL.textLight);
+          doc.text(k.l,kx+kpiW/2,y+8,{align:'center'});
+          doc.setFont('helvetica','bold');doc.setFontSize(11);setTxt(k.valC);
+          doc.text(k.v,kx+kpiW/2,y+15,{align:'center'});
+          doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+          doc.text(k.sub,kx+kpiW/2,y+19,{align:'center'});
+        });
+        y+=26;
+
+        // AI source note
+        setFill(_aiResults?[240,247,255]:[255,248,240]);
+        setDraw(_aiResults?COL.blue:COL.amber);doc.setLineWidth(0.5);
+        rect(mg,y,pw-mg*2,2,'F'); // left accent
+        setFill(_aiResults?[240,247,255]:[255,248,240]);
+        rect(mg+2,y,pw-mg*2-2,8);
+        doc.setFont('helvetica','normal');doc.setFontSize(7.5);
+        setTxt(_aiResults?COL.blue:COL.amber);
+        doc.text(_aiResults?'\u2713  Findings sourced from AI Audit (Groq \u00B7 llama-3.3-70b) \u2014 consistent with Audit Findings page':'\u26A0  AI Audit not yet run \u2014 run AI Audit on the Audit Findings page for complete findings',mg+4,y+5.5);
+        y+=13;
+
+        // ── CHARTS ──────────────────────────────────────
+        y=sectionHeader('Analytics',y);
+        var chartH=44;
+        var chartW=(pw-mg*2-8)/3;
+
+        // Chart 1: Spend by Vendor (bar chart)
+        var c1x=mg;
+        setFill(COL.white);setDraw(COL.border);doc.setLineWidth(0.3);rrect(c1x,y,chartW,chartH+16,1,'FD');
+        doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.text);
+        doc.text('Spend by Vendor',c1x+4,y+6);
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('Invoice total per vendor',c1x+4,y+11);
+        var barAreaY=y+16;var barAreaH=chartH-10;
+        var barsToShow=vSpendList.slice(0,4);
+        var barW2=Math.min(10,(chartW-10)/(barsToShow.length+1));
+        barsToShow.forEach(function(vs,bi){
+          var bx=c1x+5+(bi*(barW2+4));
+          var bh=maxVSpend>0?Math.round((vs.v/maxVSpend)*(barAreaH-8)):2;
+          var alpha=1-bi*0.18;
+          setFill([Math.round(30+bi*20),Math.round(111-bi*10),Math.round(165-bi*15)]);
+          rect(bx,barAreaY+barAreaH-8-bh,barW2,bh);
+          doc.setFont('helvetica','normal');doc.setFontSize(5.5);setTxt(COL.textLight);
+          var lbl=vs.n.split(' ')[0].slice(0,8);
+          doc.text(lbl,bx+barW2/2,barAreaY+barAreaH-2,{align:'center'});
+          doc.setFont('helvetica','bold');doc.setFontSize(5.5);setTxt(COL.blue);
+          if(bh>6)doc.text(fmtINR(vs.v).replace('\u20B9',''),bx+barW2/2,barAreaY+barAreaH-8-bh-1,{align:'center'});
+        });
+
+        // Chart 2: Findings by severity (donut-style rings)
+        var c2x=mg+chartW+4;
+        setFill(COL.white);setDraw(COL.border);rrect(c2x,y,chartW,chartH+16,1,'FD');
+        doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.text);
+        doc.text('Findings by Severity',c2x+4,y+6);
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('Distribution of audit flags',c2x+4,y+11);
+        var total2=rptFindings.length||1;
+        var sevData=[
+          {k:'CRITICAL',c:COL.red,   lc:[253,236,234]},
+          {k:'HIGH',     c:COL.amber, lc:[255,253,240]},
+          {k:'MEDIUM',   c:COL.blue,  lc:[240,247,255]},
+          {k:'LOW',      c:COL.green, lc:[234,250,241]},
+        ];
+        var legX=c2x+4;var legY=y+17;
+        sevData.forEach(function(s){
+          var cnt=sevCounts[s.k]||0;
+          var pct=Math.round((cnt/total2)*100);
+          setFill(s.lc);rect(legX,legY,chartW-8,7);
+          setFill(s.c);rect(legX,legY,2,7);
+          doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt(COL.textMid);
+          doc.text(s.k,legX+5,legY+5);
+          doc.setFont('helvetica','bold');setTxt(s.c);
+          doc.text(String(cnt),c2x+chartW-6,legY+5,{align:'right'});
+          // Mini bar
+          var barFw=(chartW-32)*pct/100;
+          setFill(COL.grey);rect(legX+22,legY+2,chartW-30,3);
+          setFill(s.c);if(barFw>0)rect(legX+22,legY+2,barFw,3);
+          legY+=9;
+        });
+
+        // Chart 3: Risk gauge
+        var c3x=mg+2*(chartW+4);
+        setFill(COL.white);setDraw(COL.border);rrect(c3x,y,chartW,chartH+16,1,'FD');
+        doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.text);
+        doc.text('Overcharge Risk Score',c3x+4,y+6);
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('% of billed amount flagged',c3x+4,y+11);
+        var riskY=y+28;
+        doc.setFont('helvetica','bold');doc.setFontSize(22);
+        var rColor=parseFloat(overRate)<5?COL.green:parseFloat(overRate)<15?COL.amber:COL.red;
+        setTxt(rColor);doc.text(overRate+'%',c3x+chartW/2,riskY,{align:'center'});
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('Risk Score',c3x+chartW/2,riskY+6,{align:'center'});
+        // Track
+        var trackY=riskY+10;var trackW=chartW-12;
+        setFill(COL.grey);rect(c3x+6,trackY,trackW,4);
+        // Gradient fill
+        var fillW=Math.min(trackW,trackW*parseFloat(overRate)/50);
+        if(fillW>0){setFill(rColor);rect(c3x+6,trackY,fillW,4);}
+        doc.setFont('helvetica','normal');doc.setFontSize(5.5);setTxt(COL.textLight);
+        doc.text('0%',c3x+6,trackY+9);doc.text('25%',c3x+6+trackW/2,trackY+9,{align:'center'});doc.text('50%+',c3x+6+trackW,trackY+9,{align:'right'});
+
+        y+=chartH+22;
+
+        // ── FINDINGS ────────────────────────────────────
+        y=sectionHeader('Audit Findings',y);
+
+        if(rptFindings.length===0){
+          setFill(COL.greenLight);setDraw(COL.green);doc.setLineWidth(0.4);rrect(mg,y,pw-mg*2,12,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(9);setTxt(COL.green);
+          doc.text('\u2713  No findings detected \u2014 all invoices passed all audit checks',pw/2,y+8,{align:'center'});
+          y+=18;
+        }
+
+        var sevColors={CRITICAL:COL.red,HIGH:COL.amber,MEDIUM:COL.blue,LOW:COL.green};
+        var sevBg={CRITICAL:COL.redLight,HIGH:COL.amberLight,MEDIUM:[235,245,251],LOW:COL.greenLight};
+        var sevBd={CRITICAL:COL.redBorder,HIGH:COL.amberBorder,MEDIUM:[174,214,241],LOW:[169,223,191]};
+
+        rptFindings.forEach(function(fd){
+          var descLines=doc.splitTextToSize(fd.desc||'',pw-mg*2-8);
+          var actLines=doc.splitTextToSize('Recommended Action: '+(fd.action||''),pw-mg*2-10);
+          var cardH=10+descLines.length*4.5+actLines.length*4+14;
+          y=pageCheck(y,cardH+4);
 
           var sev=(fd.sev||'MEDIUM').toUpperCase();
-          var rowBg=sev==='CRITICAL'?[255,242,242]:sev==='HIGH'?[255,252,235]:ri%2===0?BG:WHT;
-          var stripeC=sev==='CRITICAL'?RED:sev==='HIGH'?AMB:sev==='LOW'?GRN:BLU;
+          var sc=sevColors[sev]||COL.textLight;
+          var sb=sevBg[sev]||COL.grey;
+          var sbd=sevBd[sev]||COL.border;
 
-          sf(rowBg);sd(BDR);doc.setLineWidth(0.15);doc.rect(mg,y,cw,rowH,'FD');
-          sf(stripeC);R(mg,y,2.5,rowH);
+          // Card border
+          setFill(COL.white);setDraw(COL.border);doc.setLineWidth(0.3);rrect(mg,y,pw-mg*2,cardH,1,'FD');
 
-          N(7);st(INK);T(descLines,mg+4,y+5.5);
+          // Header strip
+          setFill(COL.bg);rrect(mg,y,pw-mg*2,10,1,'F');
+          rect(mg,y+5,pw-mg*2,5); // flatten bottom of header corners
 
-          // rates
-          var invR=fd.invoiceRate>0?fI(fd.invoiceRate):'—';
-          var conR=fd.contractRate>0?fI(fd.contractRate):fd.contractedAmt>0?fI(fd.contractedAmt):'—';
-          var diff=fd.invoiceRate>0&&fd.contractRate>0?fd.invoiceRate-fd.contractRate:fd.over;
-          var varStr=diff>0?'+ '+fI(diff):diff<0?fI(diff):'—';
+          // Severity badge
+          setFill(sb);setDraw(sbd);doc.setLineWidth(0.3);rrect(mg+2,y+2,16,6,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(6);setTxt(sc);
+          doc.text(sev,mg+10,y+6.5,{align:'center'});
 
-          B(7);st(fd.over>0?RED:MID);
-          var nc=mg+dc[0];
-          T(invR,nc+dc[1]-2,y+5.5,{align:'right'});
-          N(7);st(GRD);T(conR,nc+dc[1]+dc[2]-2,y+5.5,{align:'right'});
-          B(7);st(diff>0?RDD:GRD);T(varStr,nc+dc[1]+dc[2]+dc[3]-2,y+5.5,{align:'right'});
-          B(8);st(fd.over>0?RED:GRN);T(fd.over>0?fI(fd.over):'Compliant',mg+cw-2,y+5.5,{align:'right'});
-          y+=rowH;
+          // Type badge
+          setFill(COL.grey);setDraw(COL.border);rrect(mg+20,y+2,Math.min(fd.type.length*1.8+4,35),6,1,'FD');
+          doc.setFont('helvetica','normal');doc.setFontSize(6);setTxt(COL.textMid);
+          doc.text(fd.type,mg+22,y+6.5);
+
+          // Vendor + file
+          doc.setFont('helvetica','bold');doc.setFontSize(7.5);setTxt(COL.text);
+          var vfStr=(fd.vendor||'?')+' \u00B7 '+(fd.file||'').slice(0,30);
+          var vfX=pw-mg-2;
+          if(fd.over>0){
+            // Overcharge pill
+            setFill(COL.redLight);setDraw(COL.redBorder);rrect(pw-mg-40,y+2,38,6,1,'FD');
+            doc.setFont('helvetica','bold');doc.setFontSize(6);setTxt(COL.red);
+            doc.text(fmtINR(fd.over)+' at risk',pw-mg-21,y+6.5,{align:'center'});
+            vfX=pw-mg-42;
+          }
+          doc.setFont('helvetica','bold');doc.setFontSize(7);setTxt(COL.text);
+          var vfTrimmed=doc.splitTextToSize(vfStr,vfX-mg-58)[0]||vfStr.slice(0,40);
+          doc.text(vfTrimmed,pw-mg-(fd.over>0?44:2),y+6.5,{align:'right'});
+
+          // Separator
+          setDraw(COL.border);line(mg,y+10,mg+pw-mg*2,y+10);
+
+          // Description
+          var bodyY=y+14;
+          doc.setFont('helvetica','normal');doc.setFontSize(8);setTxt(COL.textMid);
+          doc.text(descLines,mg+4,bodyY);
+          bodyY+=descLines.length*4.5+3;
+
+          // Action box
+          setFill(COL.amberLight);setDraw(COL.amberBorder);doc.setLineWidth(0.3);
+          rrect(mg+3,bodyY,pw-mg*2-6,actLines.length*4+6,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(7);setTxt(COL.amber);
+          doc.text(actLines,mg+6,bodyY+4.5);
+
+          y+=cardH+4;
         });
 
-        // totals row
-        y=np(y,8);
-        sf(BG);sd(BDR);doc.setLineWidth(0.2);doc.rect(mg,y,cw,8,'FD');
-        B(7);st(INK);T('TOTAL FINANCIAL IMPACT',mg+3,y+5.5);
-        B(9);st(totalOver>0?RED:GRN);T(totalOver>0?fI(totalOver):'None',mg+cw-2,y+5.5,{align:'right'});
-        y+=12;
+        // ════════════════════════════════════════════════
+        // PAGE 2 — Invoice Table + Exec Summary
+        // ════════════════════════════════════════════════
+        addFooter(1);
+        doc.addPage();
+        y=drawSecondaryHeader()+6;
 
-        // audit notes per finding
-        rptFindings.forEach(function(fd){
-          if(!fd.desc)return;
-          var nl=doc.splitTextToSize(fd.desc,cw-16);
-          var nh=nl.length*4.5+11;
-          y=np(y,nh+4);
-          sf([240,244,255]);sd([195,210,250]);doc.setLineWidth(0.2);RR(mg,y,cw,nh,1,'FD');
-          sf(BLU);R(mg,y,3,nh);
-          B(6.5);st(BLU);T('Audit Note \u2014 '+fd.type,mg+6,y+5.5);
-          N(7.5);st(INK);T(nl,mg+6,y+10);
-          y+=nh+5;
+        // ── INVOICE TABLE ────────────────────────────────
+        y=sectionHeader('Invoice Summary',y);
+        var cols2=[28,20,52,16,24,24,24,22];
+        var hdrs2=['Invoice No.','Date','Vendor Name','HSN','Taxable Amt','GST','Total','Status'];
+        var rh2=7;var tableW=cols2.reduce(function(s,c){return s+c;},0);
+
+        // Table header
+        setFill(COL.navy);setDraw(COL.navy);doc.setLineWidth(0);
+        rect(mg,y,tableW,rh2);
+        doc.setFont('helvetica','bold');doc.setFontSize(6.5);setTxt(COL.white);
+        var hx=mg;
+        hdrs2.forEach(function(h,i){
+          var align=i>=4?'right':'left';
+          var tx=align==='right'?hx+cols2[i]-2:hx+2;
+          doc.text(h,tx,y+5,{align:align});
+          hx+=cols2[i];
         });
-      }
+        y+=rh2;
 
-      /* ═══════════════════════════════════════════════════════
-         SECTION 3 — COMPLIANCE & RISK CHECKLIST
-      ═══════════════════════════════════════════════════════ */
-      y=sec('3.','Compliance & Risk Checklist',y);
+        var tBilled2=0,tTax2=0,tGST2=0;
+        _filtered.forEach(function(f,ri){
+          y=pageCheck(y,rh2+1);
+          function gf2(n){var x=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field===n&&x.conf>0;});return x?x.value:'—';}
+          var inv=gf2('Invoice Number'),invDate=gf2('Invoice Date'),vn=gf2('Vendor Name'),hsn=gf2('HSN / SAC Code');
+          var tax=pAmt(gf2('Taxable Amount')),tot=pAmt(gf2('Invoice Total'));
+          var cgst=pAmt(gf2('CGST')),sgst=pAmt(gf2('SGST')),igst=pAmt(gf2('IGST'));
+          var gstAmt=cgst+sgst+igst;if(!gstAmt&&tot&&tax)gstAmt=tot-tax;
+          tBilled2+=tot;tTax2+=tax;tGST2+=gstAmt;
+          var isFlagged=flaggedFiles.has(f.name)||rptFindings.some(function(fd){return fd.file&&fd.file.includes(f.name);});
 
-      var checks=[
-        {
-          pass:hasBankAcc,
-          label:'Bank Detail Match',
-          detail:hasBankAcc
-            ?'Verified \u2014 Account on file: '+bankAcc
-            :'Bank account not found in extracted invoice data'
-        },
-        {
-          pass:hasGstin,
-          label:'GSTIN Validation',
-          detail:hasGstin
-            ?'Active and matching \u2014 GSTIN: '+gstin
-            :'GSTIN not extracted or could not be verified'
-        },
-        {
-          pass:hasPO,
-          label:'PO Reference Check',
-          detail:hasPO
-            ?'PO reference found: '+poRef
-            :'PO reference missing \u2014 could not match to procurement order'
-        },
-        {
-          pass:sevCounts.CRITICAL===0,
-          label:'Critical Finding Check',
-          detail:sevCounts.CRITICAL===0
-            ?'No critical discrepancies detected'
-            :sevCounts.CRITICAL+' critical finding(s) require immediate attention'
-        },
-        {
-          pass:!rptFindings.some(function(f){return f.type==='DUPLICATE INVOICE';}),
-          label:'Duplicate Invoice Check',
-          detail:!rptFindings.some(function(f){return f.type==='DUPLICATE INVOICE';})
-            ?'No duplicate invoices detected'
-            :'Duplicate invoices found \u2014 withhold payment pending review'
-        },
-        {
-          pass:totalOver===0,
-          label:'Rate / Amount Accuracy',
-          detail:totalOver===0
-            ?'All billed amounts within contracted rate limits'
-            :'Variance of '+fI(totalOver)+' detected above contracted value'
-        },
-      ];
+          setFill(ri%2===0?COL.bg:COL.white);setDraw(COL.border);doc.setLineWidth(0.2);
+          rect(mg,y,tableW,rh2,'FD');
 
-      checks.forEach(function(ch){
-        var dl=doc.splitTextToSize(ch.detail,cw-56);
-        var ch2=Math.max(10,dl.length*4.5+5);
-        y=np(y,ch2+3);
-        var passBg=ch.pass?GRL:RDL;
-        var passC=ch.pass?GRN:RED;
-        var passD=ch.pass?GRD:RDD;
-        sf(passBg);sd(passC);doc.setLineWidth(0.2);RR(mg,y,cw,ch2,1,'FD');
-        sf(passC);R(mg,y,3,ch2);
-        // icon + label
-        B(8.5);st(passC);T(ch.pass?'[\u2705]':'[\u274C]',mg+5,y+ch2/2+2.5);
-        B(7.5);st(INK);T(ch.label,mg+18,y+5.5);
-        N(7);st(MID);T(dl,mg+18,y+(dl.length>1?9.5:9.5));
-        // PASS/FAIL
-        B(7);st(passD);T(ch.pass?'PASS':'FAIL',pw-mg-2,y+ch2/2+1,{align:'right'});
-        y+=ch2+4;
-      });
+          // Left flag accent
+          if(isFlagged){setFill(COL.red);rect(mg,y,1.5,rh2);}
+          else{setFill(COL.green);rect(mg,y,1.5,rh2);}
 
-      /* ═══════════════════════════════════════════════════════
-         SECTION 4 — INVOICE DATA TABLE
-      ═══════════════════════════════════════════════════════ */
-      y=sec('4.','Invoice Data',y);
-
-      var ic=[30,22,48,16,26,22,cw-30-22-48-16-26-22];
-      var ih=['Invoice No.','Date','Vendor','HSN','Taxable','GST','Total'];
-      var irh=7;
-      y=np(y,irh+2);
-      sf(INK);R(mg,y,cw,irh);
-      B(6.5);st(WHT);
-      var ihx=mg;
-      ih.forEach(function(h,i){
-        var al=i>=4?'right':'left';
-        T(h,al==='right'?ihx+ic[i]-2:ihx+2,y+5,{align:al});
-        ihx+=ic[i];
-      });
-      y+=irh;
-
-      var tB=0,tT=0,tG=0;
-      _filtered.forEach(function(f,ri){
-        y=np(y,irh+1);
-        function gg(n){var x=f.extraction.fields.find(function(x){return x.field===n&&x.conf>0;});return x?x.value:'—';}
-        var inv2=gg('Invoice Number'),iDate=gg('Invoice Date'),vn2=gg('Vendor Name'),hsn2=gg('HSN / SAC Code');
-        var tax2=pa(gg('Taxable Amount')),tot2=pa(gg('Invoice Total'));
-        var cg=pa(gg('CGST')),sg=pa(gg('SGST')),ig=pa(gg('IGST'));
-        var gst2=cg+sg+ig;if(!gst2&&tot2&&tax2)gst2=tot2-tax2;
-        tB+=tot2;tT+=tax2;tG+=gst2;
-        var isF=flaggedSet.has(f.name)||rptFindings.some(function(fd){return fd.file&&fd.file.includes(f.name);});
-        sf(ri%2===0?BG:WHT);sd(BDR);doc.setLineWidth(0.15);doc.rect(mg,y,cw,irh,'FD');
-        sf(isF?RED:GRN);R(mg,y,2,irh);
-        N(6.5);st(INK);
-        var icx=mg;
-        [inv2.slice(0,13),iDate.slice(0,10),vn2.slice(0,21),(hsn2||'—').slice(0,7)].forEach(function(v,i){T(v,icx+2,y+5);icx+=ic[i];});
-        [[4,tax2],[5,gst2],[6,tot2]].forEach(function(pair){
-          var ni=pair[0],nv=pair[1];
-          var nx=mg+ic.slice(0,ni).reduce(function(s,c){return s+c;},0);
-          ni===6?B(7):N(6.5);st(ni===6?INK:MID);
-          T(nv>0?fI(nv):'—',nx+ic[ni]-2,y+5,{align:'right'});
+          doc.setFont('courier','normal');doc.setFontSize(6.5);setTxt(COL.text);
+          hx=mg;
+          var cells=[
+            inv.slice(0,14),
+            invDate.slice(0,10),
+            vn.slice(0,20),
+            (hsn||'—').slice(0,8),
+            '',// taxable — right aligned
+            '',// gst — right aligned
+            '',// total — right aligned
+            '',// status
+          ];
+          // Left-aligned cells
+          [0,1,2,3].forEach(function(ci){
+            doc.setFont('courier','normal');doc.setFontSize(ci===0?6:6.5);setTxt(COL.text);
+            var cx2=hx+cols2.slice(0,ci).reduce(function(s,c){return s+c;},0);
+            doc.text(cells[ci],cx2+2,y+5);
+          });
+          // Right-aligned numbers
+          var rCells=[
+            {i:4,v:tax>0?fmtINR(tax):'—'},
+            {i:5,v:gstAmt>0?fmtINR(gstAmt):'—'},
+            {i:6,v:tot>0?fmtINR(tot):'—'},
+          ];
+          rCells.forEach(function(rc){
+            var rx=mg+cols2.slice(0,rc.i).reduce(function(s,c){return s+c;},0);
+            doc.setFont('courier','bold');doc.setFontSize(6.5);setTxt(rc.i===6?COL.text:COL.textMid);
+            doc.text(rc.v,rx+cols2[rc.i]-2,y+5,{align:'right'});
+          });
+          // Status badge
+          var stX=mg+cols2.slice(0,7).reduce(function(s,c){return s+c;},0);
+          if(isFlagged){
+            setFill(COL.redLight);setDraw(COL.redBorder);rrect(stX+1,y+1.5,20,4,1,'FD');
+            doc.setFont('helvetica','bold');doc.setFontSize(5.5);setTxt(COL.red);
+            doc.text('\u26A0 Flagged',stX+11,y+4.8,{align:'center'});
+          }else{
+            setFill(COL.greenLight);setDraw([169,223,191]);rrect(stX+1,y+1.5,20,4,1,'FD');
+            doc.setFont('helvetica','bold');doc.setFontSize(5.5);setTxt(COL.green);
+            doc.text('\u2713 Clean',stX+11,y+4.8,{align:'center'});
+          }
+          y+=rh2;
         });
-        y+=irh;
-      });
-      // totals
-      sf(BG);sd(BDR);doc.setLineWidth(0.2);doc.rect(mg,y,cw,irh,'FD');
-      B(7);st(INK);T('TOTALS',mg+2,y+5);
-      [[4,tT],[5,tG],[6,tB]].forEach(function(pair){
-        var ni=pair[0],nv=pair[1];
-        var nx=mg+ic.slice(0,ni).reduce(function(s,c){return s+c;},0);
-        st(BLU);T(fI(nv),nx+ic[ni]-2,y+5,{align:'right'});
-      });
-      y+=irh+6;
 
-      // extracted fields per invoice
-      _filtered.forEach(function(f){
-        if(!f.extraction||!f.extraction.fields)return;
-        var vf=f.extraction.fields.filter(function(x){return x.conf>0&&x.value&&x.value!=='Not found';});
-        if(!vf.length)return;
-        var bH=8+Math.ceil(vf.length/2)*6+2;
-        y=np(y,bH);
-        sf(BG);sd(BDR);doc.setLineWidth(0.2);RR(mg,y,cw,7,1,'FD');
-        sf(BLU);R(mg,y,3,7);
-        B(7.5);st(INK);T(f.name.slice(0,50),mg+6,y+5);
-        var ft2=pa(vf.find(function(x){return x.field==='Invoice Total';})?vf.find(function(x){return x.field==='Invoice Total';}).value:'0');
-        if(ft2>0){B(7.5);st(BLU);T(fI(ft2),pw-mg-2,y+5,{align:'right'});}
-        y+=9;
-        vf.forEach(function(field,idx){
-          var col=idx%2;var fx=col===0?mg:mg+cw/2+2;
-          if(col===0&&idx>0)y+=6;
-          N(6);st(SUB);T(field.field,fx,y);
-          B(7);st(INK);T(String(field.value||'').slice(0,34),fx,y+4);
+        // Totals row
+        setFill(COL.grey);setDraw(COL.border);rect(mg,y,tableW,rh2,'FD');
+        doc.setFont('helvetica','bold');doc.setFontSize(7);setTxt(COL.text);
+        doc.text('TOTALS',mg+2,y+5);
+        var tCols=[{i:4,v:tTax2},{i:5,v:tGST2},{i:6,v:tBilled2}];
+        tCols.forEach(function(tc){
+          var tx2=mg+cols2.slice(0,tc.i).reduce(function(s,c){return s+c;},0);
+          doc.text(fmtINR(tc.v),tx2+cols2[tc.i]-2,y+5,{align:'right'});
         });
-        if(vf.length%2!==0)y+=6;
+        y+=rh2+8;
+
+        // ── EXECUTIVE SUMMARY ────────────────────────────
+        y=pageCheck(y,60);
+        y=sectionHeader('Audit Conclusion',y);
+
+        // Dark summary box
+        setFill(COL.navy);rrect(mg,y,pw-mg*2,1,1,'F'); // header
+        doc.setFont('helvetica','bold');doc.setFontSize(10);setTxt([232,244,253]);
+        doc.text('Executive Summary',mg+8,y+5.5);
+        setFill(COL.blue);rect(mg,y,3,8);
         y+=8;
-      });
 
-      /* ═══════════════════════════════════════════════════════
-         SECTION 5 — RECOMMENDED ACTIONS
-      ═══════════════════════════════════════════════════════ */
-      y=sec('5.','Recommended Actions',y);
+        var summaryText=execSummary||
+          ('This audit reviewed '+_filtered.length+' invoice'+(+_filtered.length!==1?'s':'')+
+           ' totalling '+fmtINR(_totalBilled)+' from '+vSpendList.length+' vendor'+(vSpendList.length!==1?'s':'')+'. '+
+           'The AI audit engine identified '+rptFindings.length+' issue'+(rptFindings.length!==1?'s':'')+
+           (totalOver>0?' representing '+fmtINR(totalOver)+' ('+overRate+'%) of total billed value at risk.':' — all invoices passed checks.')+
+           (sevCounts.CRITICAL>0?' '+sevCounts.CRITICAL+' critical finding'+(sevCounts.CRITICAL>1?'s require':'requires')+' immediate action.':''));
 
-      var actions=rptFindings.map(function(fd){return fd.action;}).filter(Boolean);
-      if(actions.length===0)actions=['All invoices reviewed and cleared. Approve payments as scheduled.'];
+        var summaryLines=doc.splitTextToSize(summaryText,pw-mg*2-12);
+        var boxH=summaryLines.length*4.5+14+34+24;
+        setFill([247,249,251]);setDraw(COL.border);doc.setLineWidth(0.3);
+        rrect(mg,y,pw-mg*2,boxH,1,'FD');
+        setFill(COL.navyLight);rect(mg,y,3,boxH); // left accent
+        doc.setFont('helvetica','normal');doc.setFontSize(8.5);setTxt(COL.textMid);
+        doc.text(summaryLines,mg+8,y+6);
+        y+=summaryLines.length*4.5+10;
 
-      actions.forEach(function(act,ai){
-        var al=doc.splitTextToSize(act,cw-22);
-        var ah=al.length*4.5+8;
-        y=np(y,ah+4);
-        sf(BG);sd(BDR);doc.setLineWidth(0.2);RR(mg,y,cw,ah,1,'FD');
-        sf(BLU);R(mg,y,3,ah);
-        B(9);st(BLU);T(String(ai+1)+'.',mg+6,y+5.5);
-        N(7.5);st(INK);T(al,mg+14,y+5.5);
-        y+=ah+5;
-      });
+        // Stat row inside summary
+        var statW=(pw-mg*2-12)/3;
+        var stats=[
+          {l:'TOTAL AT RISK',   v:fmtINR(totalOver),              c:COL.red},
+          {l:'CLEARED FOR PMT', v:fmtINR(_totalBilled-totalOver), c:COL.green},
+          {l:'INVOICES FLAGGED',v:flaggedFiles.size+' of '+_filtered.length, c:COL.amber},
+        ];
+        stats.forEach(function(st,i){
+          var sx=mg+4+i*(statW+2);
+          setFill(COL.navy);rrect(sx,y,statW,16,1,'F');
+          doc.setFont('helvetica','bold');doc.setFontSize(11);setTxt(st.c);
+          doc.text(st.v,sx+statW/2,y+10,{align:'center'});
+          doc.setFont('helvetica','normal');doc.setFontSize(6);setTxt([180,200,215]);
+          doc.text(st.l,sx+statW/2,y+14.5,{align:'center'});
+        });
+        y+=22;
 
-      /* ── sign-off ──────────────────────────────────────────── */
-      y=np(y,28);y+=8;
-      sd(BDR);doc.setLineWidth(0.3);LN(mg,y,mg+60,y);LN(pw-mg-60,y,pw-mg,y);
-      N(6.5);st(SUB);
-      T('Prepared by',mg,y+5);T('Authorised Signatory',pw-mg,y+5,{align:'right'});
-      B(7);st(INK);
-      T(_profile?_profile.name:'—',mg,y+10);
-      T(_profile?_profile.firm:'—',pw-mg,y+10,{align:'right'});
+        // Recommendations
+        doc.setFont('helvetica','bold');doc.setFontSize(6.5);setTxt(COL.textLight);
+        doc.text('RECOMMENDED ACTIONS',mg+8,y);
+        y+=5;
+        var recActions=rptFindings.slice(0,4).map(function(fd,i){
+          return {n:String(i+1).padStart(2,'0'),text:fd.action||('Review '+fd.type+' for '+fd.vendor)};
+        });
+        if(recActions.length===0){
+          recActions=[{n:'01',text:'All invoices cleared. Approve payments as scheduled.'}];
+        }
+        recActions.forEach(function(r){
+          var rLines=doc.splitTextToSize(r.text,pw-mg*2-22);
+          doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.blue);
+          doc.text(r.n,mg+8,y+3.5);
+          doc.setFont('helvetica','normal');doc.setFontSize(8);setTxt(COL.textMid);
+          doc.text(rLines,mg+16,y+3.5);
+          y+=rLines.length*4.5+3;
+        });
 
-      /* ── footers on all pages ──────────────────────────────── */
-      var nPgs=doc.internal.getNumberOfPages();
-      for(var p=1;p<=nPgs;p++){footer(p);}
+        y+=4;
 
-      doc.save('AuditIQ_ExceptionReport_'+new Date().toISOString().slice(0,10)+'.pdf');
-      setGenerating(false);
-      setGenerated(true);
-      setHistory(function(h){return [{date:dt,invoices:_filtered.length,findings:rptFindings.length}].concat(h).slice(0,5);});
-    }catch(e){
-      setGenerating(false);
-      alert('PDF error: '+e.message);
+        // ── ADD FOOTERS TO ALL PAGES ──────────────────────
+        var totalPg=doc.internal.getNumberOfPages();
+        for(var p=1;p<=totalPg;p++){addFooter(p);}
+
+        doc.save('AuditIQ_Report_'+new Date().toISOString().slice(0,10)+'.pdf');
+        setGenerating(false);setGenerated(true);
+        setHistory(function(h){return [{date:dt,invoices:_filtered.length,findings:rptFindings.length}].concat(h).slice(0,5);});
+      }catch(e){setGenerating(false);alert('PDF error: '+e.message);}
+    }
+
+    // ── Use AI to generate executive summary if AI results exist ──
+    if(_aiResults&&_filtered.length>0){
+      var promptData={
+        invoiceCount:_filtered.length,
+        totalBilled:fmtINR(_totalBilled),
+        totalOvercharge:fmtINR(totalOver),
+        overchargeRate:overRate+'%',
+        findingsCount:rptFindings.length,
+        criticalCount:sevCounts.CRITICAL,
+        highCount:sevCounts.HIGH,
+        vendors:vSpendList.slice(0,3).map(function(v){return v.n+' ('+fmtINR(v.v)+')';}),
+        topFindings:rptFindings.slice(0,3).map(function(f){return f.sev+': '+f.type+' \u2014 '+f.vendor+(f.over>0?' ('+fmtINR(f.over)+')':'');})
+      };
+      fetch('/api/groq',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:'llama-3.3-70b-versatile',
+          temperature:0.3,
+          max_tokens:300,
+          messages:[{role:'user',content:'Write a concise 3-sentence executive summary for a professional invoice audit report for a finance manager. Data: '+JSON.stringify(promptData)+'. Be direct, factual, and professional. No bullet points. Return only the 3 sentences, nothing else.'}]
+        })
+      }).then(function(r){return r.json();})
+      .then(function(d){
+        var aiExec=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||'';
+        buildPDF(aiExec.trim());
+      })
+      .catch(function(){buildPDF('');});
+    } else {
+      buildPDF('');
     }
   }
 
@@ -2437,306 +2584,6 @@ function Dashboard(props){
                 );
               })
             )
-      )
-    )
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  ANALYTICS
-// ══════════════════════════════════════════════════════════════════
-function Analytics(props){
-  var uploadedFiles=props.uploadedFiles||[];
-  var vendorMaster=props.vendorMaster||[];
-
-  // Chart canvas refs
-  var spendRef=useRef(null);
-  var trendRef=useRef(null);
-  var taxRef=useRef(null);
-  var predictRef=useRef(null);
-  var overchargeRef=useRef(null);
-  var chartInstances=useRef({});
-
-  // ── helpers ──────────────────────────────────────────────────────
-  function getField(ex,name){
-    if(!ex||!ex.fields)return null;
-    var f=ex.fields.find(function(x){return x.field===name&&x.conf>0;});
-    if(f)return f.value;
-    var nl=name.toLowerCase();
-    f=ex.fields.find(function(x){return x.field.toLowerCase()===nl&&x.conf>0;});
-    return f?f.value:null;
-  }
-  function parseAmt(v){
-    if(!v)return 0;
-    var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);
-    if(!tokens)return 0;
-    var best=0;
-    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
-    return best;
-  }
-  function fmtINR(n){
-    if(!n||isNaN(n))return '₹0';
-    if(n>=10000000)return '₹'+(n/10000000).toFixed(2)+'Cr';
-    if(n>=100000)return '₹'+(n/100000).toFixed(2)+'L';
-    return '₹'+Math.round(n).toLocaleString('en-IN');
-  }
-
-  var approved=uploadedFiles.filter(function(f){return f.extraction&&f.zone==='INVOICES';});
-
-  // ── Build data sets ───────────────────────────────────────────────
-  // Vendor spend
-  var vSpend={};
-  approved.forEach(function(f){
-    var vn=getField(f.extraction,'Vendor Name')||'Unknown';
-    vSpend[vn]=(vSpend[vn]||0)+parseAmt(getField(f.extraction,'Invoice Total'));
-  });
-  var vLabels=Object.keys(vSpend).sort(function(a,b){return vSpend[b]-vSpend[a];}).slice(0,8);
-  var vData=vLabels.map(function(k){return Math.round(vSpend[k]);});
-
-  // Monthly trend
-  var mSpend={};
-  approved.forEach(function(f){
-    var d=getField(f.extraction,'Invoice Date')||'';
-    var m=null;
-    var dm=d.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
-    if(dm){var yr=dm[3].length===2?'20'+dm[3]:dm[3];m=yr+'-'+dm[2].padStart(2,'0');}
-    else{var dm2=d.match(/(\d{4})-(\d{2})/);if(dm2)m=dm2[1]+'-'+dm2[2];}
-    if(m){mSpend[m]=(mSpend[m]||0)+parseAmt(getField(f.extraction,'Invoice Total'));}
-  });
-  var mLabels=Object.keys(mSpend).sort();
-  var mData=mLabels.map(function(k){return Math.round(mSpend[k]);});
-
-  // Tax breakdown
-  var totalCGST=0,totalSGST=0,totalIGST=0,totalTaxable=0;
-  approved.forEach(function(f){
-    totalCGST+=parseAmt(getField(f.extraction,'CGST'));
-    totalSGST+=parseAmt(getField(f.extraction,'SGST'));
-    totalIGST+=parseAmt(getField(f.extraction,'IGST'));
-    totalTaxable+=parseAmt(getField(f.extraction,'Taxable Amount'));
-  });
-
-  // Predictive: simple linear extrapolation from monthly data
-  function buildPrediction(){
-    if(mData.length<2)return {labels:[],actual:[],predicted:[]};
-    var n=mData.length;
-    var sumX=0,sumY=0,sumXY=0,sumX2=0;
-    for(var i=0;i<n;i++){sumX+=i;sumY+=mData[i];sumXY+=i*mData[i];sumX2+=i*i;}
-    var slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX)||0;
-    var intercept=(sumY-slope*sumX)/n;
-    var predLabels=mLabels.slice();
-    var predActual=mData.slice();
-    var predFuture=[];
-    // Add 3 future months
-    var lastDate=mLabels[mLabels.length-1];
-    var parts=lastDate.split('-');
-    var yr=parseInt(parts[0]),mo=parseInt(parts[1]);
-    for(var j=1;j<=3;j++){
-      mo++;if(mo>12){mo=1;yr++;}
-      var lbl=yr+'-'+(mo<10?'0':'')+mo;
-      predLabels.push(lbl);
-      predFuture.push(Math.max(0,Math.round(intercept+slope*(n-1+j))));
-    }
-    return {labels:predLabels,actual:predActual,predicted:[...new Array(n).fill(null),...predFuture]};
-  }
-  var pred=buildPrediction();
-
-  // ── Destroy + render charts ──────────────────────────────────────
-  function destroyChart(key){
-    if(chartInstances.current[key]){
-      try{chartInstances.current[key].destroy();}catch(e){}
-      delete chartInstances.current[key];
-    }
-  }
-
-  useEffect(function(){
-    if(!window.Chart)return;
-    var dark=C.dark;
-    var gridColor=dark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.06)';
-    var tickColor=dark?'rgba(255,255,255,0.38)':'rgba(0,0,0,0.42)';
-    var ff="'DM Sans',sans-serif";
-    var COLORS=['#3B82F6','#8B5CF6','#10B981','#F59E0B','#EF4444','#06B6D4','#F97316','#EC4899'];
-
-    // ── 1. Spend Trend & Forecast (bar + dashed forecast)
-    if(spendRef.current&&mLabels.length>0){
-      destroyChart('spend');
-      // Build combined actual + forecast bars
-      var allLabels=pred.labels;
-      var actualBars=mData.concat(new Array(pred.predicted.filter(function(v){return v!==null;}).length).fill(null));
-      var forecastBars=new Array(mData.length).fill(null).concat(pred.predicted.filter(function(v){return v!==null;}));
-      chartInstances.current['spend']=new Chart(spendRef.current,{
-        type:'bar',
-        data:{
-          labels:allLabels,
-          datasets:[
-            {label:'Actual Spend',data:actualBars,backgroundColor:'#3B82F6',borderRadius:5,borderSkipped:false,barPercentage:.7},
-            {label:'Forecast',data:forecastBars,backgroundColor:'rgba(245,158,11,0.55)',borderRadius:5,borderSkipped:false,barPercentage:.7,
-             borderColor:'#F59E0B',borderWidth:1.5}
-          ]
-        },
-        options:{responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{display:true,position:'bottom',labels:{color:tickColor,font:{family:ff,size:10},padding:14,boxWidth:10,boxHeight:10}},
-            tooltip:{callbacks:{label:function(ctx){return ' '+fmtINR(ctx.parsed.y);}}}},
-          scales:{x:{grid:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},maxRotation:0}},
-            y:{grid:{color:gridColor},border:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},callback:function(v){return fmtINR(v);}}}}}
-      });
-    }
-
-    // ── 2. Overcharge Risk (horizontal bar per vendor)
-    if(overchargeRef.current&&vLabels.length>0){
-      destroyChart('overcharge');
-      var totalSpendVal=vData.reduce(function(s,v){return s+v;},0);
-      chartInstances.current['overcharge']=new Chart(overchargeRef.current,{
-        type:'bar',
-        data:{
-          labels:vLabels.map(function(v){return v.length>18?v.slice(0,17)+'…':v;}),
-          datasets:[{label:'Spend',data:vData,backgroundColor:COLORS.slice(0,vLabels.length),borderRadius:4,borderSkipped:false}]
-        },
-        options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){
-            var pct=totalSpendVal>0?((ctx.parsed.x/totalSpendVal)*100).toFixed(1):0;
-            return ' '+fmtINR(ctx.parsed.x)+' ('+pct+'%)';
-          }}}},
-          scales:{x:{grid:{color:gridColor},border:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},callback:function(v){return fmtINR(v);}}},
-            y:{grid:{display:false},ticks:{color:tickColor,font:{family:ff,size:10}}}}}
-      });
-    }
-
-    // ── 3. Audit Health — tax donut
-    if(taxRef.current&&(totalCGST+totalSGST+totalIGST)>0){
-      destroyChart('tax');
-      chartInstances.current['tax']=new Chart(taxRef.current,{
-        type:'doughnut',
-        data:{
-          labels:['CGST','SGST','IGST'],
-          datasets:[{data:[Math.round(totalCGST),Math.round(totalSGST),Math.round(totalIGST)],
-            backgroundColor:['#3B82F6','#8B5CF6','#10B981'],
-            borderColor:dark?'#0D1117':'#FFFFFF',borderWidth:3,hoverOffset:6}]
-        },
-        options:{responsive:true,maintainAspectRatio:false,cutout:'66%',
-          plugins:{legend:{position:'bottom',labels:{color:tickColor,font:{family:ff,size:10},padding:12,boxWidth:9,boxHeight:9}},
-            tooltip:{callbacks:{label:function(ctx){return ' '+fmtINR(ctx.parsed);}}}}}
-      });
-    }
-
-    // ── 4. Monthly trend line
-    if(trendRef.current&&mLabels.length>0){
-      destroyChart('trend');
-      chartInstances.current['trend']=new Chart(trendRef.current,{
-        type:'line',
-        data:{
-          labels:pred.labels,
-          datasets:[
-            {label:'Actual',data:mData.concat(new Array(pred.predicted.filter(function(v){return v!==null;}).length).fill(null)),
-              borderColor:'#10B981',backgroundColor:'rgba(16,185,129,0.07)',fill:true,tension:.42,
-              pointBackgroundColor:'#10B981',pointRadius:3,pointHoverRadius:5},
-            {label:'Forecast',data:new Array(mData.length).fill(null).concat(pred.predicted.filter(function(v){return v!==null;})),
-              borderColor:'#F59E0B',backgroundColor:'rgba(245,158,11,0.06)',fill:true,tension:.42,
-              pointBackgroundColor:'#F59E0B',pointRadius:3,pointHoverRadius:5,borderDash:[5,4]}
-          ]
-        },
-        options:{responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{display:true,position:'bottom',labels:{color:tickColor,font:{family:ff,size:10},padding:12,boxWidth:10,boxHeight:10}},
-            tooltip:{callbacks:{label:function(ctx){return ' '+fmtINR(ctx.parsed.y);}}}},
-          scales:{x:{grid:{color:gridColor},border:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},maxRotation:0}},
-            y:{grid:{color:gridColor},border:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},callback:function(v){return fmtINR(v);}}}}}
-      });
-    }
-
-    return function(){['spend','overcharge','tax','trend'].forEach(destroyChart);};
-  },[approved.length,C.dark]);
-
-  // ── Derived stats ─────────────────────────────────────────────────
-  var hasData=approved.length>0;
-  var totalSpend=vData.reduce(function(s,v){return s+v;},0);
-  var totalTax=totalCGST+totalSGST+totalIGST;
-  var effTaxRate=totalTaxable>0?((totalTax/totalTaxable)*100).toFixed(1)+'%':'—';
-  var topVendor=vLabels[0]||'—';
-  var topVendorAmt=vData[0]||0;
-  var nextMonthForecast=pred.predicted.find(function(v){return v!==null;})||null;
-
-  // ── KPI cards ─────────────────────────────────────────────────────
-  function KpiCard(label,value,sub,color,icon){
-    return h('div',{style:{background:C.panel,border:'1px solid '+C.border,borderRadius:14,padding:'16px 18px',display:'flex',flexDirection:'column',gap:6}},
-      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},
-        h('div',{style:{fontSize:10,fontWeight:600,color:C.faint,textTransform:'uppercase',letterSpacing:.9}},label),
-        h('div',{style:{width:30,height:30,borderRadius:8,background:color+'18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}},icon)
-      ),
-      h('div',{style:{fontSize:20,fontWeight:800,color:C.text,letterSpacing:-.5}},value),
-      sub?h('div',{style:{fontSize:10,color:C.faint}},sub):null
-    );
-  }
-
-  function ChartCard(title,sub,height,canvasRef,empty){
-    return h('div',{style:{background:C.panel,border:'1px solid '+C.border,borderRadius:14,padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}},
-      h('div',null,
-        h('div',{style:{fontSize:12,fontWeight:700,color:C.text}},title),
-        h('div',{style:{fontSize:10,color:C.faint,marginTop:2}},sub)
-      ),
-      empty
-        ?h('div',{style:{height:height,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:8}},
-          h('div',{style:{fontSize:28,opacity:.4}},'📊'),
-          h('div',{style:{fontSize:11,color:C.faint}},'No data yet')
-        )
-        :h('div',{style:{height:height,position:'relative'}},h('canvas',{ref:canvasRef}))
-    );
-  }
-
-  if(!hasData) return h('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:12}},
-    h('div',{style:{fontSize:40}},'📊'),
-    h('div',{style:{fontSize:14,fontWeight:700,color:C.muted}},'No Analytics Data Yet'),
-    h('div',{style:{fontSize:12,color:C.faint}},'Upload and extract invoices to generate charts.')
-  );
-
-  return h('div',{style:{display:'flex',flexDirection:'column',gap:16,height:'100%',overflow:'auto'}},
-
-    // ── Row 1: KPI strip ─────────────────────────────────────────
-    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,flexShrink:0}},
-      KpiCard('Total Spend',fmtINR(totalSpend),approved.length+' invoices',C.blue,'💰'),
-      KpiCard('Top Vendor',topVendor.length>14?topVendor.slice(0,13)+'…':topVendor,fmtINR(topVendorAmt),C.purple,'🏢'),
-      KpiCard('Total Tax',fmtINR(totalTax),'Eff. rate: '+effTaxRate,C.amber,'🧾'),
-      KpiCard('Next Month Est.',nextMonthForecast?fmtINR(nextMonthForecast):'—',nextMonthForecast?'Forecast projection':'Need 2+ months data',C.green,'🔮')
-    ),
-
-    // ── Row 2: Spend Trend & Forecast (wide) + Tax Donut ────────
-    h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:12,flexShrink:0}},
-      ChartCard(
-        'Spend Trend & Forecast',
-        'Actual spend + '+(pred.predicted.filter(function(v){return v!==null;}).length)+'-month projection',
-        220,spendRef,mLabels.length===0
-      ),
-      h('div',{style:{background:C.panel,border:'1px solid '+C.border,borderRadius:14,padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}},
-        h('div',null,
-          h('div',{style:{fontSize:12,fontWeight:700,color:C.text}},'Tax Breakdown'),
-          h('div',{style:{fontSize:10,color:C.faint,marginTop:2}},'CGST · SGST · IGST distribution')
-        ),
-        totalTax>0
-          ?h('div',{style:{flex:1,position:'relative',height:180}},h('canvas',{ref:taxRef}))
-          :h('div',{style:{height:180,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:8}},
-            h('div',{style:{fontSize:28,opacity:.4}},'🧾'),
-            h('div',{style:{fontSize:11,color:C.faint}},'No tax data')
-          ),
-        totalTax>0?h('div',{style:{display:'flex',justifyContent:'space-between',borderTop:'1px solid '+C.border,paddingTop:10,marginTop:4}},
-          [{l:'CGST',v:totalCGST,c:'#3B82F6'},{l:'SGST',v:totalSGST,c:'#8B5CF6'},{l:'IGST',v:totalIGST,c:'#10B981'}].map(function(r,i){
-            return h('div',{key:i,style:{textAlign:'center'}},
-              h('div',{style:{fontSize:11,fontWeight:700,color:r.c}},fmtINR(r.v)),
-              h('div',{style:{fontSize:9,color:C.faint,marginTop:2}},r.l)
-            );
-          })
-        ):null
-      )
-    ),
-
-    // ── Row 3: Vendor Spend (wide) + Trend Line ──────────────────
-    h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,flexShrink:0,paddingBottom:4}},
-      ChartCard(
-        'Vendor Spend Breakdown',
-        'Total invoiced per vendor — top '+vLabels.length,
-        200,overchargeRef,vLabels.length===0
-      ),
-      ChartCard(
-        'Monthly Spend Trend',
-        mLabels.length>=2?mLabels[0]+' → '+pred.labels[pred.labels.length-1]:'Historical spend over time',
-        200,trendRef,mLabels.length===0
       )
     )
   );
