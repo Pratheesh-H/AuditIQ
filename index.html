@@ -831,81 +831,6 @@ function extractTaxAmt(v){
 // ══════════════════════════════════════════════════════════════════
 //  AUDIT FINDINGS
 // ══════════════════════════════════════════════════════════════════
-async function runGroqOversight(invoices,contracts,rateCards,vmData,ruleFindings){
-  var AUDIT_FIELDS=['Vendor Name','Vendor GSTIN','Invoice Number','Invoice Total',
-    'Taxable Amount','CGST','SGST','IGST','Rate per Unit','Quantity',
-    'HSN / SAC Code','IFSC Code','Invoice Date','Contracted Rate','Rate Card Reference'];
-  function af(ex){
-    if(!ex||!ex.fields)return{};
-    var o={};
-    ex.fields.filter(function(x){return !x.isMeta&&x.conf>0&&AUDIT_FIELDS.indexOf(x.field)!==-1;})
-      .forEach(function(x){o[x.field]=x.value;});
-    return o;
-  }
-  // Only send key fields to reduce tokens ~60%
-  // Build a plain-English audit narrative using AI
-  var rulesSummary=ruleFindings.map(function(f){
-    return {type:f.type,title:f.title,vendor:f.vendorName,amount:f.overchargeAmt,desc:f.desc};
-  });
-  var prompt='You are a senior Indian GST and procurement auditor writing a board-level audit report.\n'
-    +'I have already detected the following rule-based findings:\n'+JSON.stringify(rulesSummary)+'\n\n'
-    +'Invoice data:\n'+JSON.stringify(invoices.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
-    +'\n\nContracts/Rate cards:\n'+JSON.stringify(contracts.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
-    +'\n\nVendor master:\n'+JSON.stringify(vmData.map(function(v){return{name:v.name,gstin:v.gstin};}))
-    +'\n\nReturn ONLY a valid JSON object (no markdown) with this exact structure:\n'
-    +'{\n'
-    +'  "overallSummary": "3-5 sentence plain English overview of the entire audit. Mention total risk, key vendors flagged, and overall health of the invoice set. Write as if explaining to a finance manager who is not a GST expert.",\n'
-    +'  "findingNarratives": [\n'
-    +'    {\n'
-    +'      "findingTitle": "exact title from rule findings above",\n'
-    +'      "plainEnglish": "2-4 sentence explanation in simple language. Explain what went wrong, why it matters, what money is at risk, and what the vendor may have done incorrectly. Avoid jargon.",\n'
-    +'      "riskImpact": "One sentence on financial or compliance risk if not acted upon.",\n'
-    +'      "immediateStep": "One clear sentence on what the accounts team should do TODAY."\n'
-    +'    }\n'
-    +'  ],\n'
-    +'  "additionalFindings": [\n'
-    +'    {"type":"COMPLIANCE","severity":"HIGH","title":"...","vendorName":"...","invoiceFile":"...","overchargeAmt":0,"desc":"...","action":"...","plainEnglish":"..."}\n'
-    +'  ]\n'
-    +'}\n'
-    +'additionalFindings = any NEW issues you spot that the rules missed (fuzzy name match, missing fields, contract violations). Empty array if none.';
-  var resp=await fetch('/api/groq',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'user',content:prompt}],max_tokens:2048,temperature:0.1})});
-  if(!resp.ok){var et=await resp.text().catch(function(){return'';});throw new Error('Groq '+resp.status+': '+et.slice(0,200));}
-  var data=await resp.json();
-  var raw='';try{raw=data.choices[0].message.content||'';}catch(e){raw='';}
-  raw=raw.trim().replace(/^```json\s*/i,'').replace(/^```/,'').replace(/```$/,'').trim();
-  var parsed;
-  try{parsed=JSON.parse(raw);}
-  catch(e){
-    var mo=raw.match(/\{[\s\S]*\}/);
-    if(mo){try{parsed=JSON.parse(mo[0]);}catch(e2){parsed=null;}}
-  }
-  if(!parsed||typeof parsed!=='object'){return{summary:'',narratives:{},extras:[]};}
-  // Build narratives lookup keyed by finding title
-  var narratives={};
-  (parsed.findingNarratives||[]).forEach(function(n){
-    if(n&&n.findingTitle){
-      narratives[n.findingTitle]={
-        plainEnglish:String(n.plainEnglish||''),
-        riskImpact:String(n.riskImpact||''),
-        immediateStep:String(n.immediateStep||'')
-      };
-    }
-  });
-  // Extra findings AI spotted beyond rule-engine
-  var extras=(parsed.additionalFindings||[]).map(function(it,i){return{
-    id:'ai-'+Date.now()+'-'+i,
-    type:String(it.type||'COMPLIANCE').toUpperCase(),
-    severity:['CRITICAL','HIGH','MEDIUM','LOW'].includes(String(it.severity||'').toUpperCase())?String(it.severity).toUpperCase():'MEDIUM',
-    title:String(it.title||'AI Finding'),vendorName:String(it.vendorName||'Unknown'),
-    overchargeAmt:parseFloat(it.overchargeAmt)||0,
-    desc:String(it.desc||''),plainEnglish:String(it.plainEnglish||''),
-    action:String(it.action||''),file:String(it.invoiceFile||''),ref:'AI Analysis',isAI:true};});
-  return{summary:String(parsed.overallSummary||''),narratives:narratives,extras:extras};
-}
-
 function AuditFindings(props){
   var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster,config=props.config;
   var aiRes=props.aiResults||null;
@@ -1083,9 +1008,20 @@ function AuditFindings(props){
         isAI:true
       };});
 
+      // Build narratives lookup keyed by title so AI Explanation cards actually render
+      var narrativesMap={};
+      aiFindings.forEach(function(it){
+        if(it.title&&it.plainEnglish){
+          narrativesMap[it.title]={
+            plainEnglish:it.plainEnglish,
+            riskImpact:'',
+            immediateStep:it.action||''
+          };
+        }
+      });
       setAiRes({
         summary:String(parsed.overallSummary||''),
-        narratives:{},
+        narratives:narrativesMap,
         extras:aiFindings
       });
       setAiDoneV(true);
@@ -1107,7 +1043,7 @@ function AuditFindings(props){
       h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.red}},
         h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Total Overcharge Detected'),
         h('div',{style:{fontSize:22,fontWeight:800,color:C.red,fontFamily:"'DM Mono',monospace"}},'\u20B9'+totalOvercharge.toLocaleString('en-IN',{minimumFractionDigits:2})),
-        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},findings.length+' finding'+(findings.length!==1?'s':'')+' across '+approved.length+' invoices')
+        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},allFindings.length+' finding'+(allFindings.length!==1?'s':'')+' across '+approved.length+' invoices')
       ),
       h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.amber}},
         h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Critical / High Findings'),
@@ -1157,14 +1093,14 @@ function AuditFindings(props){
             aiSummary?h('div',{style:{background:'linear-gradient(135deg,rgba(139,92,246,0.12),rgba(109,40,217,0.06))',border:'1px solid rgba(139,92,246,0.3)',borderRadius:12,padding:'16px 20px',marginBottom:4}},
               h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10}},
                 h('span',{style:{fontSize:14}},'🧠'),
-                h('span',{style:{fontSize:13,fontWeight:700,color:'#8B5CF6'}}),'AI Audit Summary'
+                h('span',{style:{fontSize:13,fontWeight:700,color:'#8B5CF6'}},'AI Audit Summary')
               ),
               h('div',{style:{fontSize:13,color:C.text,lineHeight:1.8,fontStyle:'italic'}},'"'+aiSummary+'"')
             ):null,
             h('div',{style:{fontSize:12,color:C.muted,marginBottom:4}},visible.length+' finding'+(visible.length>1?'s':'')+' · '+approved.length+' invoice'+(approved.length>1?'s':'')+' audited'),
             visible.map(function(finding){
               var sev=SEV[finding.severity]||{c:C.muted};
-              var narrative=aiNarratives[finding.title]||null;
+              var narrative=aiNarratives[finding.title]||(finding.plainEnglish?{plainEnglish:finding.plainEnglish,riskImpact:'',immediateStep:finding.action||''}:null);
               return h('div',{key:finding.id,className:'card',style:{borderLeft:'3px solid '+(finding.isAI?'#8B5CF6':sev.c),padding:'0',overflow:'hidden'}},
                 // ── Header strip ──
                 h('div',{style:{padding:'14px 18px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)'}},
