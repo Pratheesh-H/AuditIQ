@@ -6,6 +6,7 @@
 <title>AuditIQ</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;overflow:hidden}
@@ -103,6 +104,9 @@ const IC={
   search:'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0',
   edit:'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
   download:'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3',
+  chart:'M18 20V10M12 20V4M6 20v-6',
+  trendUp:'M23 6l-9.5 9.5-5-5L1 18',
+  send:'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z',
 };
 
 function Ico({d,sz,s}){
@@ -1503,605 +1507,488 @@ function Reports(props){
       var s1=document.createElement('script');
       s1.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
       s1.onload=function(){downloadPDF();};
-      s1.onerror=function(){alert('Could not load PDF library. Check internet connection.');};
+      s1.onerror=function(){alert('Could not load PDF library.');};
       document.head.appendChild(s1);
       return;
     }
-    // ── Show generating state ──────────────────────────────────────
     setGenerating(true);
 
-    // ── If AI results exist, generate executive summary via Groq ──
-    var _aiResults=props.aiResults||null;
-    var _aiSummary=_aiResults?(_aiResults.summary||''):'';
-    var _aiFindings=_aiResults?(_aiResults.extras||[]):[];
-    var _cfg=props.config||{};
-    var _vm=props.vendorMaster||[];
+    // ── data setup ────────────────────────────────────────────────
+    var _aiFindings=(props.aiResults&&props.aiResults.extras)||[];
     var _uf=props.uploadedFiles||[];
     var _profile=props.profile||null;
     var _approved=_uf.filter(function(f){return f.status==='REVIEWED'&&f.zone==='INVOICES'&&f.extraction;});
     var _filtered=_approved.filter(function(f){
       if(scope==='VENDOR'&&vendor){
-        var fx=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field==='Vendor Name'&&x.conf>0;});
+        var fx=f.extraction.fields.find(function(x){return x.field==='Vendor Name'&&x.conf>0;});
         return fx?fx.value===vendor:false;
       }
       return true;
     });
-    function gfx(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
-    function pAmt(v){if(!v)return 0;var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);if(!tokens)return 0;var best=0;tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});return best;}
-    function fmtINR(n){if(!n||isNaN(n))return '\u20B90';if(n>=10000000)return '\u20B9'+(n/10000000).toFixed(2)+'Cr';if(n>=100000)return '\u20B9'+(n/100000).toFixed(2)+'L';return '\u20B9'+Math.round(n).toLocaleString('en-IN');}
 
-    var _totalBilled=_filtered.reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
-    var _totalTaxable=_filtered.reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Taxable Amount'));},0);
+    function gf(ex,name){var fx=ex&&ex.fields&&ex.fields.find(function(x){return x.field===name&&x.conf>0;});return fx?fx.value:null;}
+    function pAmt(v){if(!v)return 0;var t=String(v).match(/\d[\d,]*(?:\.\d+)?/g);if(!t)return 0;var b=0;t.forEach(function(x){var n=parseFloat(x.replace(/,/g,''));if(!isNaN(n)&&n>b)b=n;});return b;}
+    function fI(n){if(!n||isNaN(n))return '\u20B90';if(n>=10000000)return '\u20B9'+(n/10000000).toFixed(2)+'Cr';if(n>=100000)return '\u20B9'+(n/100000).toFixed(2)+'L';return '\u20B9'+Math.round(n).toLocaleString('en-IN');}
 
-    // Map AI findings scoped to vendor if needed
-    var rptFindings=_aiFindings.filter(function(fd){
-      if(scope==='VENDOR'&&vendor){return (fd.vendorName||'').toLowerCase()===(vendor||'').toLowerCase();}
-      return true;
-    }).map(function(fd){
-      return {type:String(fd.type||'FINDING'),sev:String(fd.severity||'MEDIUM'),vendor:String(fd.vendorName||'?'),file:String(fd.file||fd.ref||''),over:fd.overchargeAmt||0,desc:String(fd.desc||fd.plainEnglish||''),action:String(fd.action||'')};
+    var totalBilled=_filtered.reduce(function(s,f){return s+pAmt(gf(f.extraction,'Invoice Total'));},0);
+    var totalTaxable=_filtered.reduce(function(s,f){return s+pAmt(gf(f.extraction,'Taxable Amount'));},0);
+    var totalCGST=_filtered.reduce(function(s,f){return s+pAmt(gf(f.extraction,'CGST'));},0);
+    var totalSGST=_filtered.reduce(function(s,f){return s+pAmt(gf(f.extraction,'SGST'));},0);
+    var totalIGST=_filtered.reduce(function(s,f){return s+pAmt(gf(f.extraction,'IGST'));},0);
+
+    var rptFindings=_aiFindings.map(function(fd){
+      return {type:String(fd.type||'FINDING'),sev:String(fd.severity||'MEDIUM'),vendor:String(fd.vendorName||'?'),
+        file:String(fd.file||fd.ref||''),over:fd.overchargeAmt||0,desc:String(fd.desc||fd.plainEnglish||''),action:String(fd.action||'')};
     });
-    // Duplicate check
     var invNos={};
-    _filtered.forEach(function(f){var n=gfx(f.extraction,'Invoice Number');if(n){if(!invNos[n])invNos[n]=[];invNos[n].push(f);}});
+    _filtered.forEach(function(f){var n=gf(f.extraction,'Invoice Number');if(n){if(!invNos[n])invNos[n]=[];invNos[n].push(f);}});
     Object.keys(invNos).forEach(function(n){
       if(invNos[n].length>1){
-        var dA=invNos[n].reduce(function(s,f){return s+pAmt(gfx(f.extraction,'Invoice Total'));},0);
-        var sA=pAmt(gfx(invNos[n][0].extraction,'Invoice Total'));
-        var already=rptFindings.some(function(fd){return fd.type==='DUPLICATE'&&fd.desc&&fd.desc.includes(n);});
-        if(!already)rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gfx(invNos[n][0].extraction,'Vendor Name')||'?',file:invNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,desc:'Invoice "'+n+'" appears '+invNos[n].length+' times.',action:'Block duplicates. Pay only once.'});
+        var dA=invNos[n].reduce(function(s,f){return s+pAmt(gf(f.extraction,'Invoice Total'));},0);
+        var sA=pAmt(gf(invNos[n][0].extraction,'Invoice Total'));
+        if(!rptFindings.some(function(fd){return fd.type==='DUPLICATE'&&fd.desc.includes(n);}))
+          rptFindings.push({type:'DUPLICATE INVOICE',sev:'HIGH',vendor:gf(invNos[n][0].extraction,'Vendor Name')||'?',file:invNos[n].map(function(f){return f.name;}).join(', '),over:dA-sA,desc:'Invoice "'+n+'" appears '+invNos[n].length+' times.',action:'Block duplicates. Pay only once.'});
       }
     });
 
     var totalOver=rptFindings.reduce(function(s,f){return s+(f.over||0);},0);
-    var overRate=_totalBilled>0?((totalOver/_totalBilled)*100).toFixed(1):'0.0';
-
-    // Vendor spend map
+    var overRate=totalBilled>0?((totalOver/totalBilled)*100).toFixed(1):'0.0';
     var vSpend={};
-    _filtered.forEach(function(f){var vn=gfx(f.extraction,'Vendor Name')||'Unknown';vSpend[vn]=(vSpend[vn]||0)+pAmt(gfx(f.extraction,'Invoice Total'));});
-    var vSpendList=Object.keys(vSpend).map(function(n){return {n:n,v:vSpend[n]};}).sort(function(a,b){return b.v-a.v;});
-    var maxVSpend=vSpendList.length?vSpendList[0].v:1;
-
-    // Severity counts
+    _filtered.forEach(function(f){var vn=gf(f.extraction,'Vendor Name')||'Unknown';vSpend[vn]=(vSpend[vn]||0)+pAmt(gf(f.extraction,'Invoice Total'));});
+    var vList=Object.keys(vSpend).map(function(n){return{n:n,v:vSpend[n]};}).sort(function(a,b){return b.v-a.v;});
     var sevCounts={CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
     rptFindings.forEach(function(fd){var s=(fd.sev||'MEDIUM').toUpperCase();if(sevCounts[s]!==undefined)sevCounts[s]++;});
+    var flagged=new Set(rptFindings.map(function(fd){return fd.file;}));
+    var dt=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
 
-    // Flagged invoice set
-    var flaggedFiles=new Set(rptFindings.map(function(fd){return fd.file;}));
-
-    function buildPDF(execSummary){
+    // ── Capture chart images from live canvases ───────────────────
+    function getChartImg(canvasId){
       try{
-        var doc=new JsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-        var pw=doc.internal.pageSize.getWidth(); // 210
-        var ph=doc.internal.pageSize.getHeight(); // 297
-        var mg=14;
-        var y=0;
-        var dt=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
+        var canvases=document.querySelectorAll('canvas');
+        // pick by index based on id tag we'll set, or just grab all 4
+        if(canvases[canvasId])return canvases[canvasId].toDataURL('image/png',1.0);
+      }catch(e){}
+      return null;
+    }
+    // Get all chart canvases currently rendered in the Analytics page
+    var allCanvases=Array.from(document.querySelectorAll('canvas'));
+    var chartImgs=allCanvases.slice(0,4).map(function(c){
+      try{return c.toDataURL('image/png',1.0);}catch(e){return null;}
+    });
 
-        // ── COLOUR PALETTE ─────────────────────────────────────────
-        var COL={
-          navy:[13,27,42],    navyMid:[26,47,68],   navyLight:[30,64,96],
-          blue:[30,111,165],  blueLight:[74,144,196],
-          red:[192,57,43],    redLight:[253,236,234],redBorder:[245,183,177],
-          green:[26,122,74],  greenLight:[234,250,241],
-          amber:[183,121,15], amberLight:[255,253,240],amberBorder:[240,217,160],
-          text:[13,27,42],    textMid:[44,62,80],    textLight:[106,130,153],
-          border:[228,234,240], bg:[247,249,251],    white:[255,255,255],
-          grey:[238,242,246],
-        };
+    try{
+      var doc=new JsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+      var pw=doc.internal.pageSize.getWidth();
+      var ph=doc.internal.pageSize.getHeight();
+      var mg=15;
+      var cw=pw-mg*2; // content width = 180mm
+      var y=0;
 
-        function setFill(c){doc.setFillColor(c[0],c[1],c[2]);}
-        function setDraw(c){doc.setDrawColor(c[0],c[1],c[2]);}
-        function setTxt(c){doc.setTextColor(c[0],c[1],c[2]);}
-        function rect(x,y,w,h,style){doc.rect(x,y,w,h,style||'F');}
-        function rrect(x,y,w,h,r,style){doc.roundedRect(x,y,w,h,r,r,style||'F');}
-        function line(x1,y1,x2,y2){doc.line(x1,y1,x2,y2);}
+      // ── colours ──────────────────────────────────────────────────
+      var C2={
+        black:[15,20,30], dark:[30,40,55], mid:[70,85,100], light:[140,155,170],
+        border:[210,218,226], bg:[246,248,250], white:[255,255,255],
+        blue:[37,99,235], blueLight:[219,234,254],
+        green:[22,163,74], greenLight:[220,252,231],
+        red:[220,38,38], redLight:[254,226,226],
+        amber:[217,119,6], amberLight:[254,243,199],
+        navy:[15,23,42],
+      };
+      function sf(c){doc.setFillColor(c[0],c[1],c[2]);}
+      function sd(c){doc.setDrawColor(c[0],c[1],c[2]);}
+      function st(c){doc.setTextColor(c[0],c[1],c[2]);}
+      function R(x,y,w,h,s){doc.rect(x,y,w,h,s||'F');}
+      function RR(x,y,w,h,r,s){doc.roundedRect(x,y,w,h,r,r,s||'F');}
+      function L(x1,y1,x2,y2){doc.line(x1,y1,x2,y2);}
 
-        function sectionHeader(title, yp){
-          // Left accent bar
-          setFill(COL.blue);rect(mg,yp,2,5);
-          doc.setFont('helvetica','bold');doc.setFontSize(10);setTxt(COL.navy);
-          doc.text(title,mg+5,yp+4);
-          setDraw(COL.border);doc.setLineWidth(0.3);
-          var tw=doc.getTextWidth(title);
-          line(mg+7+tw,yp+2,pw-mg,yp+2);
-          return yp+10;
+      function footer(pg){
+        var tot=doc.internal.getNumberOfPages();
+        doc.setPage(pg);
+        sf(C2.bg);R(0,ph-10,pw,10);
+        sd(C2.border);doc.setLineWidth(0.2);L(mg,ph-10,pw-mg,ph-10);
+        doc.setFont('helvetica','normal');doc.setFontSize(7);st(C2.light);
+        doc.text('AuditIQ  \u00B7  Invoice Audit Report  \u00B7  Confidential',mg,ph-4);
+        doc.text('Page '+pg+' / '+tot,pw-mg,ph-4,{align:'right'});
+        doc.text(dt,pw/2,ph-4,{align:'center'});
+      }
+
+      function pageCheck(yp,need){
+        if(yp+need>ph-14){
+          footer(doc.internal.getNumberOfPages());
+          doc.addPage();
+          // continuation header
+          sf(C2.navy);R(0,0,pw,12);
+          doc.setFont('helvetica','bold');doc.setFontSize(9);st([220,230,245]);
+          doc.text('AuditIQ  \u00B7  Invoice Audit Report',mg,8.5);
+          doc.setFont('helvetica','normal');doc.setFontSize(7);st([140,160,185]);
+          doc.text('continued',pw-mg,8.5,{align:'right'});
+          return 18;
         }
+        return yp;
+      }
 
-        function pageCheck(yp,need){
-          if(yp+need>ph-16){
-            addFooter(doc.internal.getNumberOfPages());
-            doc.addPage();
-            yp=drawSecondaryHeader()+4;
+      function section(title,yp){
+        doc.setFont('helvetica','bold');doc.setFontSize(9);st(C2.mid);
+        doc.text(title.toUpperCase(),mg,yp);
+        sd(C2.border);doc.setLineWidth(0.25);
+        L(mg+doc.getTextWidth(title.toUpperCase())+3,yp-1,pw-mg,yp-1);
+        return yp+6;
+      }
+
+      // ════════════════════════════════════════
+      // PAGE 1 — COVER + SUMMARY
+      // ════════════════════════════════════════
+
+      // Header bar
+      sf(C2.navy);R(0,0,pw,22);
+      doc.setFont('helvetica','bold');doc.setFontSize(18);st([230,240,255]);
+      doc.text('AuditIQ',mg,15);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);st([140,160,190]);
+      doc.text('Invoice Audit Report',mg+40,15);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);st([140,160,190]);
+      doc.text(dt,pw-mg,15,{align:'right'});
+
+      y=30;
+
+      // Meta row — Prepared By / Org / Scope / Invoices
+      var meta=[
+        {l:'Prepared by',v:_profile?_profile.name:'—'},
+        {l:'Organisation',v:_profile?_profile.firm:'—'},
+        {l:'Scope',v:scope==='VENDOR'&&vendor?vendor:'All Vendors'},
+        {l:'Invoices',v:String(_filtered.length)},
+      ];
+      var mw=cw/4;
+      meta.forEach(function(m,i){
+        var mx=mg+i*mw;
+        doc.setFont('helvetica','normal');doc.setFontSize(7);st(C2.light);
+        doc.text(m.l,mx,y);
+        doc.setFont('helvetica','bold');doc.setFontSize(8.5);st(C2.black);
+        doc.text(String(m.v||'—').slice(0,20),mx,y+5.5);
+        if(i<3){sd(C2.border);doc.setLineWidth(0.2);L(mx+mw-2,y-2,mx+mw-2,y+7);}
+      });
+
+      y+=16;
+      sd(C2.border);doc.setLineWidth(0.2);L(mg,y,pw-mg,y);
+      y+=8;
+
+      // ── KPI BOXES ──────────────────────────────────────
+      y=section('Financial Summary',y);
+      var kw=(cw-9)/4;
+      var kpis=[
+        {l:'Total Billed',v:fI(totalBilled),c:C2.blue,bg:C2.blueLight},
+        {l:'Total Tax',v:fI(totalCGST+totalSGST+totalIGST),c:C2.amber,bg:C2.amberLight},
+        {l:'Overcharge Found',v:totalOver>0?fI(totalOver):'None',c:totalOver>0?C2.red:C2.green,bg:totalOver>0?C2.redLight:C2.greenLight},
+        {l:'Overcharge Rate',v:overRate+'%',c:parseFloat(overRate)<5?C2.green:parseFloat(overRate)<15?C2.amber:C2.red,bg:C2.bg},
+      ];
+      kpis.forEach(function(k,i){
+        var kx=mg+i*(kw+3);
+        sf(k.bg);sd(C2.border);doc.setLineWidth(0.2);RR(kx,y,kw,18,1,'FD');
+        sf(k.c);R(kx,y,kw,2.5);
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);st(C2.mid);
+        doc.text(k.l,kx+kw/2,y+8,{align:'center'});
+        doc.setFont('helvetica','bold');doc.setFontSize(10);st(k.c);
+        doc.text(k.v,kx+kw/2,y+15,{align:'center'});
+      });
+      y+=24;
+
+      // ── 4 ADDITIONAL STATS ──────────────────────────────
+      var stats2=[
+        {l:'Vendors',v:String(vList.length)},
+        {l:'Taxable Amount',v:fI(totalTaxable)},
+        {l:'Findings',v:String(rptFindings.length)},
+        {l:'Critical / High',v:sevCounts.CRITICAL+' / '+sevCounts.HIGH},
+      ];
+      stats2.forEach(function(s,i){
+        var sx=mg+i*(kw+3);
+        doc.setFont('helvetica','normal');doc.setFontSize(7);st(C2.light);
+        doc.text(s.l,sx,y);
+        doc.setFont('helvetica','bold');doc.setFontSize(8);st(C2.dark);
+        doc.text(s.v,sx,y+5);
+      });
+      y+=14;
+
+      // ── CHARTS (paste actual canvas screenshots) ──────────
+      y=pageCheck(y,10);
+      y=section('Analytics Charts',y);
+
+      var chartLabels=['Spend Trend & Forecast','Tax Breakdown','Vendor Spend Breakdown','Monthly Spend Trend'];
+      var validImgs=chartImgs.filter(function(img){return !!img;});
+
+      if(validImgs.length>0){
+        // Row 1: first two charts side by side
+        var chW2=(cw-6)/2;
+        var chH2=50;
+        for(var ci=0;ci<Math.min(2,validImgs.length);ci++){
+          var cx=mg+ci*(chW2+6);
+          sf(C2.bg);sd(C2.border);doc.setLineWidth(0.2);RR(cx,y,chW2,chH2+10,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(7.5);st(C2.dark);
+          doc.text(chartLabels[ci]||('Chart '+(ci+1)),cx+3,y+5);
+          doc.setFont('helvetica','normal');doc.setFontSize(6);st(C2.light);
+          try{
+            doc.addImage(validImgs[ci],'PNG',cx+2,y+7,chW2-4,chH2);
+          }catch(e){}
+        }
+        y+=chH2+16;
+
+        if(validImgs.length>2){
+          y=pageCheck(y,chH2+16);
+          for(var ci2=2;ci2<Math.min(4,validImgs.length);ci2++){
+            var cx2=mg+(ci2-2)*(chW2+6);
+            sf(C2.bg);sd(C2.border);doc.setLineWidth(0.2);RR(cx2,y,chW2,chH2+10,1,'FD');
+            doc.setFont('helvetica','bold');doc.setFontSize(7.5);st(C2.dark);
+            doc.text(chartLabels[ci2]||('Chart '+(ci2+1)),cx2+3,y+5);
+            try{
+              doc.addImage(validImgs[ci2],'PNG',cx2+2,y+7,chW2-4,chH2);
+            }catch(e){}
           }
-          return yp;
+          y+=chH2+16;
         }
+      } else {
+        // No charts captured — draw simple text fallback
+        sf(C2.bg);sd(C2.border);doc.setLineWidth(0.2);RR(mg,y,cw,12,1,'FD');
+        doc.setFont('helvetica','normal');doc.setFontSize(8);st(C2.light);
+        doc.text('Visit the Analytics page to view charts. Charts are captured when the Analytics page is open.',pw/2,y+8,{align:'center'});
+        y+=18;
+      }
 
-        function drawSecondaryHeader(){
-          setFill(COL.navy);rect(0,0,pw,14);
-          doc.setFont('helvetica','bold');doc.setFontSize(11);
-          setTxt([232,244,253]);doc.text('Audit',mg,10);
-          setTxt(COL.blueLight);doc.text('IQ',mg+15,10);
-          doc.setFont('helvetica','normal');doc.setFontSize(7);
-          setTxt([255,255,255,0.4]);
-          doc.setTextColor(160,180,200);
-          doc.text('AI Invoice Auditor \u00B7 Confidential Audit Report \u00B7 Continued',mg+25,10);
-          // Accent gradient line
-          setFill(COL.blue);rect(0,14,pw*0.4,1.5);
-          setFill(COL.blueLight);rect(pw*0.4,14,pw*0.2,1.5);
-          setFill([247,249,251]);rect(pw*0.6,14,pw*0.4,1.5);
-          return 20;
+      // ── VENDOR SPEND TABLE ──────────────────────────────
+      y=pageCheck(y,20);
+      y=section('Vendor Spend Breakdown',y);
+      if(vList.length>0){
+        var vCols=[90,40,40,40];
+        var vHdrs=['Vendor Name','Total Spend','% of Billed','Invoices'];
+        var vrh=7;
+        // header row
+        sf(C2.dark);sd(C2.dark);R(mg,y,cw,vrh);
+        doc.setFont('helvetica','bold');doc.setFontSize(6.5);st(C2.white);
+        var vx=mg;
+        vHdrs.forEach(function(h,i){
+          var al=i>0?'right':'left';
+          doc.text(h,al==='right'?vx+vCols[i]-2:vx+2,y+5,{align:al});
+          vx+=vCols[i];
+        });
+        y+=vrh;
+
+        var invByVendor={};
+        _filtered.forEach(function(f){
+          var vn=gf(f.extraction,'Vendor Name')||'Unknown';
+          invByVendor[vn]=(invByVendor[vn]||0)+1;
+        });
+        vList.forEach(function(v,ri){
+          y=pageCheck(y,vrh+1);
+          sf(ri%2===0?C2.bg:C2.white);sd(C2.border);doc.setLineWidth(0.15);R(mg,y,cw,vrh,'FD');
+          // colour accent bar
+          var barMax=vList[0].v||1;
+          var barW2=Math.round((v.v/barMax)*(vCols[0]-6));
+          sf([200,220,250]);R(mg+1,y+0.5,barW2,vrh-1);
+          doc.setFont('helvetica','normal');doc.setFontSize(7);st(C2.dark);
+          doc.text((v.n||'Unknown').slice(0,40),mg+2,y+5);
+          doc.setFont('helvetica','bold');doc.setFontSize(7);st(C2.blue);
+          doc.text(fI(v.v),mg+vCols[0]+vCols[1]-2,y+5,{align:'right'});
+          st(C2.mid);doc.setFont('helvetica','normal');
+          var pct=totalBilled>0?((v.v/totalBilled)*100).toFixed(1)+'%':'—';
+          doc.text(pct,mg+vCols[0]+vCols[1]+vCols[2]-2,y+5,{align:'right'});
+          doc.text(String(invByVendor[v.n]||1),mg+cw-2,y+5,{align:'right'});
+          y+=vrh;
+        });
+        // totals
+        sf(C2.bg);sd(C2.border);doc.setLineWidth(0.2);R(mg,y,cw,vrh,'FD');
+        doc.setFont('helvetica','bold');doc.setFontSize(7);st(C2.dark);
+        doc.text('TOTAL',mg+2,y+5);
+        st(C2.blue);doc.text(fI(totalBilled),mg+vCols[0]+vCols[1]-2,y+5,{align:'right'});
+        y+=vrh+6;
+      }
+
+      // ════════════════════════════════════════
+      // PAGE 2 — INVOICE TABLE
+      // ════════════════════════════════════════
+      footer(doc.internal.getNumberOfPages());
+      doc.addPage();
+      sf(C2.navy);R(0,0,pw,12);
+      doc.setFont('helvetica','bold');doc.setFontSize(9);st([220,230,245]);
+      doc.text('AuditIQ  \u00B7  Invoice Detail',mg,8.5);
+      doc.setFont('helvetica','normal');doc.setFontSize(7);st([140,160,185]);
+      doc.text(dt,pw-mg,8.5,{align:'right'});
+      y=20;
+
+      y=section('Invoice-by-Invoice Detail',y);
+
+      var cols=[28,22,46,14,22,22,22,24];
+      var hdrs=['Inv. No.','Date','Vendor','HSN','Taxable','GST','Total','Status'];
+      var rh=7;
+      var tw=cols.reduce(function(s,c){return s+c;},0);
+
+      // header
+      sf(C2.dark);R(mg,y,tw,rh);
+      doc.setFont('helvetica','bold');doc.setFontSize(6.5);st(C2.white);
+      var hx2=mg;
+      hdrs.forEach(function(h,i){
+        var al=i>=4?'right':'left';
+        doc.text(h,al==='right'?hx2+cols[i]-2:hx2+2,y+5,{align:al});
+        hx2+=cols[i];
+      });
+      y+=rh;
+
+      var tBil=0,tTax=0,tGst=0;
+      _filtered.forEach(function(f,ri){
+        y=pageCheck(y,rh+1);
+        function gf2(n){var x=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field===n&&x.conf>0;});return x?x.value:'—';}
+        var inv=gf2('Invoice Number'),invDate=gf2('Invoice Date'),vn=gf2('Vendor Name'),hsn=gf2('HSN / SAC Code');
+        var tax=pAmt(gf2('Taxable Amount')),tot=pAmt(gf2('Invoice Total'));
+        var cgst=pAmt(gf2('CGST')),sgst=pAmt(gf2('SGST')),igst=pAmt(gf2('IGST'));
+        var gstAmt=cgst+sgst+igst;if(!gstAmt&&tot&&tax)gstAmt=tot-tax;
+        tBil+=tot;tTax+=tax;tGst+=gstAmt;
+        var isFlag=flagged.has(f.name)||rptFindings.some(function(fd){return fd.file&&fd.file.includes(f.name);});
+
+        sf(ri%2===0?C2.bg:C2.white);sd(C2.border);doc.setLineWidth(0.15);R(mg,y,tw,rh,'FD');
+        // left accent stripe
+        sf(isFlag?C2.red:C2.green);R(mg,y,1.5,rh);
+
+        doc.setFont('helvetica','normal');doc.setFontSize(6.5);st(C2.dark);
+        var cx3=mg;
+        [inv.slice(0,13),invDate.slice(0,10),vn.slice(0,22),(hsn||'—').slice(0,7)].forEach(function(v,i){
+          doc.text(v,cx3+2,y+5);cx3+=cols[i];
+        });
+        // right-aligned numbers
+        var nc=[[4,tax],[5,gstAmt],[6,tot]];
+        nc.forEach(function(pair){
+          var ni=pair[0],nv=pair[1];
+          var nx=mg+cols.slice(0,ni).reduce(function(s,c){return s+c;},0);
+          doc.setFont('helvetica',ni===6?'bold':'normal');doc.setFontSize(6.5);
+          st(ni===6?C2.dark:C2.mid);
+          doc.text(nv>0?fI(nv):'—',nx+cols[ni]-2,y+5,{align:'right'});
+        });
+        // status
+        var stX2=mg+cols.slice(0,7).reduce(function(s,c){return s+c;},0);
+        if(isFlag){
+          sf(C2.redLight);sd([245,180,180]);RR(stX2+1,y+1.5,22,4,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(5.5);st(C2.red);
+          doc.text('\u26A0 Flagged',stX2+12,y+4.8,{align:'center'});
+        }else{
+          sf(C2.greenLight);sd([160,220,180]);RR(stX2+1,y+1.5,22,4,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(5.5);st(C2.green);
+          doc.text('\u2713 Clean',stX2+12,y+4.8,{align:'center'});
         }
+        y+=rh;
+      });
 
-        function addFooter(pageNum){
-          var totalPages=doc.internal.getNumberOfPages();
-          doc.setPage(pageNum);
-          setFill(COL.bg);rect(0,ph-11,pw,11);
-          setDraw(COL.border);doc.setLineWidth(0.3);line(mg,ph-11,pw-mg,ph-11);
-          doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt(COL.textLight);
-          doc.text('AuditIQ \u00B7 Confidential Audit Report \u00B7 Do Not Distribute',mg,ph-5);
-          doc.text('Page '+pageNum+' of '+totalPages,pw-mg,ph-5,{align:'right'});
-        }
+      // totals row
+      sf(C2.bg);sd(C2.border);doc.setLineWidth(0.2);R(mg,y,tw,rh,'FD');
+      doc.setFont('helvetica','bold');doc.setFontSize(7);st(C2.dark);
+      doc.text('TOTAL',mg+2,y+5);
+      [[4,tTax],[5,tGst],[6,tBil]].forEach(function(pair){
+        var ni=pair[0],nv=pair[1];
+        var nx=mg+cols.slice(0,ni).reduce(function(s,c){return s+c;},0);
+        st(C2.blue);doc.text(fI(nv),nx+cols[ni]-2,y+5,{align:'right'});
+      });
+      y+=rh+10;
 
-        // ════════════════════════════════════════════════
-        // PAGE 1
-        // ════════════════════════════════════════════════
+      // ── EXTRACTED FIELDS PER INVOICE ───────────────────
+      y=pageCheck(y,20);
+      y=section('All Extracted Fields',y);
 
-        // ── HEADER ──────────────────────────────────────
-        setFill(COL.navy);rect(0,0,pw,32);
-        // Grid texture
-        doc.setLineWidth(0.1);setDraw([255,255,255]);doc.setGState&&doc.setGState(new doc.GState({opacity:0.03}));
-        for(var gx=0;gx<pw;gx+=8){line(gx,0,gx,32);}
-        for(var gy=0;gy<32;gy+=8){line(0,gy,pw,gy);}
-        if(doc.setGState){doc.setGState(new doc.GState({opacity:1}));}
-        doc.setLineWidth(0.3);
+      _filtered.forEach(function(f,fi){
+        if(!f.extraction||!f.extraction.fields)return;
+        var validFields=f.extraction.fields.filter(function(x){return x.conf>0&&x.value&&x.value!=='Not found';});
+        if(validFields.length===0)return;
+        var blockH=8+Math.ceil(validFields.length/2)*6+4;
+        y=pageCheck(y,blockH);
 
-        // Logo
-        doc.setFont('helvetica','bold');doc.setFontSize(22);
-        setTxt([232,244,253]);doc.text('Audit',mg,21);
-        setTxt(COL.blueLight);doc.text('IQ',mg+27,21);
-        doc.setFont('helvetica','normal');doc.setFontSize(7.5);
-        setTxt([180,200,215]);doc.text('AI Invoice Auditor  \u00B7  Confidential Audit Report',mg,27);
+        // Invoice block header
+        sf(C2.bg);sd(C2.border);doc.setLineWidth(0.2);RR(mg,y,cw,7,1,'FD');
+        sf(C2.blue);doc.roundedRect(mg,y,3,7,1,1,'F');
+        doc.setFont('helvetica','bold');doc.setFontSize(7.5);st(C2.dark);
+        doc.text(f.name.slice(0,50),mg+6,y+5);
+        var tot2=pAmt(f.extraction.fields.find(function(x){return x.field==='Invoice Total'&&x.conf>0;})?f.extraction.fields.find(function(x){return x.field==='Invoice Total'&&x.conf>0;}).value:'0');
+        if(tot2>0){st(C2.blue);doc.text(fI(tot2),pw-mg-2,y+5,{align:'right'});}
+        y+=9;
 
-        // AI chip
-        var chipX=mg;var chipY=30;
-        setFill([74,144,196,0.12]);
-        setDraw(COL.blueLight);doc.setLineWidth(0.4);
-        // small dot + text
-        setFill(COL.blueLight);rrect(chipX,chipY-3.5,3,3,1,'F');
-        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.blueLight);
-        doc.text('AI Audit \u00B7 Groq llama-3.3-70b',chipX+4.5,chipY-0.8);
-
-        // Date/inv right
-        doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt([160,180,200]);
-        doc.text('Date Generated',pw-mg,17,{align:'right'});
-        doc.setFont('helvetica','bold');doc.setFontSize(12);setTxt([232,244,253]);
-        doc.text(dt,pw-mg,24,{align:'right'});
-        doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt([160,180,200]);
-        doc.text(_filtered.length+' invoices  \u00B7  '+(_filtered.length?'All Vendors':'No data'),pw-mg,29,{align:'right'});
-
-        // Accent gradient bar
-        setFill(COL.blue);rect(0,32,pw*0.4,2);
-        setFill(COL.blueLight);rect(pw*0.4,32,pw*0.2,2);
-        setFill([247,249,251]);rect(pw*0.6,32,pw*0.4,2);
-
-        // ── META ROW ────────────────────────────────────
-        setFill(COL.bg);rect(0,34,pw,14);
-        setDraw(COL.border);doc.setLineWidth(0.3);line(0,48,pw,48);
-        var metas=[
-          {l:'Prepared By',v:_profile?_profile.name:'—'},
-          {l:'Organisation',v:_profile?_profile.firm:'—'},
-          {l:'Audit Period',v:dt},
-          {l:'Report Scope',v:scope==='VENDOR'&&vendor?vendor:'All Vendors'},
-        ];
-        var mw=(pw-mg*2)/4;
-        metas.forEach(function(m,i){
-          var mx=mg+i*mw;
-          if(i>0){setDraw(COL.border);line(mx,36,mx,46);}
-          doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
-          doc.text(m.l.toUpperCase(),mx+(i>0?4:0),40);
-          doc.setFont('helvetica','bold');doc.setFontSize(8.5);setTxt(COL.text);
-          doc.text(String(m.v||'—').slice(0,22),mx+(i>0?4:0),46);
+        // Fields in 2-column grid
+        validFields.forEach(function(field,idx){
+          var col=idx%2;
+          var fx=col===0?mg:mg+cw/2+2;
+          if(col===0&&idx>0)y+=6;
+          else if(col===0){}
+          doc.setFont('helvetica','normal');doc.setFontSize(6);st(C2.light);
+          doc.text(field.field,fx,y);
+          doc.setFont('helvetica','bold');doc.setFontSize(7);st(C2.dark);
+          var val=String(field.value||'').slice(0,35);
+          doc.text(val,fx,y+4);
         });
+        if(validFields.length%2!==0)y+=6;
+        y+=6;
+      });
 
-        y=54;
-
-        // ── KPI CARDS ───────────────────────────────────
-        y=sectionHeader('Financial Overview',y);
-        var kpiW=(pw-mg*2-9)/4;
-        var kpis=[
-          {l:'TOTAL BILLED',   v:fmtINR(_totalBilled), sub:_filtered.length+' invoices', topC:COL.blue,   valC:COL.blue},
-          {l:'TOTAL OVERCHARGE',v:totalOver>0?fmtINR(totalOver):'None', sub:rptFindings.length+' findings', topC:totalOver>0?COL.red:COL.green, valC:totalOver>0?COL.red:COL.green},
-          {l:'CORRECT AMOUNT', v:fmtINR(_totalBilled-totalOver), sub:'After overcharges', topC:COL.green,  valC:COL.green},
-          {l:'OVERCHARGE RATE',v:overRate+'%', sub:'Of total billed', topC:COL.amber, valC:COL.amber},
-        ];
-        kpis.forEach(function(k,i){
-          var kx=mg+i*(kpiW+3);
-          setDraw(COL.border);doc.setLineWidth(0.3);
-          setFill(COL.white);rrect(kx,y,kpiW,20,1,'FD');
-          // Top colour bar
-          setFill(k.topC);rect(kx,y,kpiW,2);
-          doc.setFont('helvetica','normal');doc.setFontSize(6);setTxt(COL.textLight);
-          doc.text(k.l,kx+kpiW/2,y+8,{align:'center'});
-          doc.setFont('helvetica','bold');doc.setFontSize(11);setTxt(k.valC);
-          doc.text(k.v,kx+kpiW/2,y+15,{align:'center'});
-          doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
-          doc.text(k.sub,kx+kpiW/2,y+19,{align:'center'});
-        });
-        y+=26;
-
-        // AI source note
-        setFill(_aiResults?[240,247,255]:[255,248,240]);
-        setDraw(_aiResults?COL.blue:COL.amber);doc.setLineWidth(0.5);
-        rect(mg,y,pw-mg*2,2,'F'); // left accent
-        setFill(_aiResults?[240,247,255]:[255,248,240]);
-        rect(mg+2,y,pw-mg*2-2,8);
-        doc.setFont('helvetica','normal');doc.setFontSize(7.5);
-        setTxt(_aiResults?COL.blue:COL.amber);
-        doc.text(_aiResults?'\u2713  Findings sourced from AI Audit (Groq \u00B7 llama-3.3-70b) \u2014 consistent with Audit Findings page':'\u26A0  AI Audit not yet run \u2014 run AI Audit on the Audit Findings page for complete findings',mg+4,y+5.5);
-        y+=13;
-
-        // ── CHARTS ──────────────────────────────────────
-        y=sectionHeader('Analytics',y);
-        var chartH=44;
-        var chartW=(pw-mg*2-8)/3;
-
-        // Chart 1: Spend by Vendor (bar chart)
-        var c1x=mg;
-        setFill(COL.white);setDraw(COL.border);doc.setLineWidth(0.3);rrect(c1x,y,chartW,chartH+16,1,'FD');
-        doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.text);
-        doc.text('Spend by Vendor',c1x+4,y+6);
-        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
-        doc.text('Invoice total per vendor',c1x+4,y+11);
-        var barAreaY=y+16;var barAreaH=chartH-10;
-        var barsToShow=vSpendList.slice(0,4);
-        var barW2=Math.min(10,(chartW-10)/(barsToShow.length+1));
-        barsToShow.forEach(function(vs,bi){
-          var bx=c1x+5+(bi*(barW2+4));
-          var bh=maxVSpend>0?Math.round((vs.v/maxVSpend)*(barAreaH-8)):2;
-          var alpha=1-bi*0.18;
-          setFill([Math.round(30+bi*20),Math.round(111-bi*10),Math.round(165-bi*15)]);
-          rect(bx,barAreaY+barAreaH-8-bh,barW2,bh);
-          doc.setFont('helvetica','normal');doc.setFontSize(5.5);setTxt(COL.textLight);
-          var lbl=vs.n.split(' ')[0].slice(0,8);
-          doc.text(lbl,bx+barW2/2,barAreaY+barAreaH-2,{align:'center'});
-          doc.setFont('helvetica','bold');doc.setFontSize(5.5);setTxt(COL.blue);
-          if(bh>6)doc.text(fmtINR(vs.v).replace('\u20B9',''),bx+barW2/2,barAreaY+barAreaH-8-bh-1,{align:'center'});
-        });
-
-        // Chart 2: Findings by severity (donut-style rings)
-        var c2x=mg+chartW+4;
-        setFill(COL.white);setDraw(COL.border);rrect(c2x,y,chartW,chartH+16,1,'FD');
-        doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.text);
-        doc.text('Findings by Severity',c2x+4,y+6);
-        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
-        doc.text('Distribution of audit flags',c2x+4,y+11);
-        var total2=rptFindings.length||1;
-        var sevData=[
-          {k:'CRITICAL',c:COL.red,   lc:[253,236,234]},
-          {k:'HIGH',     c:COL.amber, lc:[255,253,240]},
-          {k:'MEDIUM',   c:COL.blue,  lc:[240,247,255]},
-          {k:'LOW',      c:COL.green, lc:[234,250,241]},
-        ];
-        var legX=c2x+4;var legY=y+17;
-        sevData.forEach(function(s){
-          var cnt=sevCounts[s.k]||0;
-          var pct=Math.round((cnt/total2)*100);
-          setFill(s.lc);rect(legX,legY,chartW-8,7);
-          setFill(s.c);rect(legX,legY,2,7);
-          doc.setFont('helvetica','normal');doc.setFontSize(7);setTxt(COL.textMid);
-          doc.text(s.k,legX+5,legY+5);
-          doc.setFont('helvetica','bold');setTxt(s.c);
-          doc.text(String(cnt),c2x+chartW-6,legY+5,{align:'right'});
-          // Mini bar
-          var barFw=(chartW-32)*pct/100;
-          setFill(COL.grey);rect(legX+22,legY+2,chartW-30,3);
-          setFill(s.c);if(barFw>0)rect(legX+22,legY+2,barFw,3);
-          legY+=9;
-        });
-
-        // Chart 3: Risk gauge
-        var c3x=mg+2*(chartW+4);
-        setFill(COL.white);setDraw(COL.border);rrect(c3x,y,chartW,chartH+16,1,'FD');
-        doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.text);
-        doc.text('Overcharge Risk Score',c3x+4,y+6);
-        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
-        doc.text('% of billed amount flagged',c3x+4,y+11);
-        var riskY=y+28;
-        doc.setFont('helvetica','bold');doc.setFontSize(22);
-        var rColor=parseFloat(overRate)<5?COL.green:parseFloat(overRate)<15?COL.amber:COL.red;
-        setTxt(rColor);doc.text(overRate+'%',c3x+chartW/2,riskY,{align:'center'});
-        doc.setFont('helvetica','normal');doc.setFontSize(6.5);setTxt(COL.textLight);
-        doc.text('Risk Score',c3x+chartW/2,riskY+6,{align:'center'});
-        // Track
-        var trackY=riskY+10;var trackW=chartW-12;
-        setFill(COL.grey);rect(c3x+6,trackY,trackW,4);
-        // Gradient fill
-        var fillW=Math.min(trackW,trackW*parseFloat(overRate)/50);
-        if(fillW>0){setFill(rColor);rect(c3x+6,trackY,fillW,4);}
-        doc.setFont('helvetica','normal');doc.setFontSize(5.5);setTxt(COL.textLight);
-        doc.text('0%',c3x+6,trackY+9);doc.text('25%',c3x+6+trackW/2,trackY+9,{align:'center'});doc.text('50%+',c3x+6+trackW,trackY+9,{align:'right'});
-
-        y+=chartH+22;
-
-        // ── FINDINGS ────────────────────────────────────
-        y=sectionHeader('Audit Findings',y);
-
-        if(rptFindings.length===0){
-          setFill(COL.greenLight);setDraw(COL.green);doc.setLineWidth(0.4);rrect(mg,y,pw-mg*2,12,1,'FD');
-          doc.setFont('helvetica','bold');doc.setFontSize(9);setTxt(COL.green);
-          doc.text('\u2713  No findings detected \u2014 all invoices passed all audit checks',pw/2,y+8,{align:'center'});
-          y+=18;
-        }
-
-        var sevColors={CRITICAL:COL.red,HIGH:COL.amber,MEDIUM:COL.blue,LOW:COL.green};
-        var sevBg={CRITICAL:COL.redLight,HIGH:COL.amberLight,MEDIUM:[235,245,251],LOW:COL.greenLight};
-        var sevBd={CRITICAL:COL.redBorder,HIGH:COL.amberBorder,MEDIUM:[174,214,241],LOW:[169,223,191]};
+      // ════════════════════════════════════════
+      // AUDIT FINDINGS PAGE (if any)
+      // ════════════════════════════════════════
+      if(rptFindings.length>0){
+        footer(doc.internal.getNumberOfPages());
+        doc.addPage();
+        sf(C2.navy);R(0,0,pw,12);
+        doc.setFont('helvetica','bold');doc.setFontSize(9);st([220,230,245]);
+        doc.text('AuditIQ  \u00B7  Audit Findings',mg,8.5);
+        doc.setFont('helvetica','normal');doc.setFontSize(7);st([140,160,185]);
+        doc.text(rptFindings.length+' finding'+(rptFindings.length!==1?'s':''),pw-mg,8.5,{align:'right'});
+        y=20;
+        y=section('Audit Findings ('+rptFindings.length+')',y);
 
         rptFindings.forEach(function(fd){
-          var descLines=doc.splitTextToSize(fd.desc||'',pw-mg*2-8);
-          var actLines=doc.splitTextToSize('Recommended Action: '+(fd.action||''),pw-mg*2-10);
-          var cardH=10+descLines.length*4.5+actLines.length*4+14;
+          var descL=doc.splitTextToSize(fd.desc||'',cw-8);
+          var actL=doc.splitTextToSize(fd.action||'',cw-12);
+          var cardH=8+descL.length*4.5+(actL.length>0?actL.length*4+8:0)+4;
           y=pageCheck(y,cardH+4);
 
           var sev=(fd.sev||'MEDIUM').toUpperCase();
-          var sc=sevColors[sev]||COL.textLight;
-          var sb=sevBg[sev]||COL.grey;
-          var sbd=sevBd[sev]||COL.border;
+          var sc=sev==='CRITICAL'?C2.red:sev==='HIGH'?C2.amber:sev==='LOW'?C2.green:C2.blue;
+          var sbg=sev==='CRITICAL'?C2.redLight:sev==='HIGH'?C2.amberLight:sev==='LOW'?C2.greenLight:[219,234,254];
 
-          // Card border
-          setFill(COL.white);setDraw(COL.border);doc.setLineWidth(0.3);rrect(mg,y,pw-mg*2,cardH,1,'FD');
+          sf(C2.white);sd(C2.border);doc.setLineWidth(0.2);RR(mg,y,cw,cardH,1,'FD');
+          sf(sc);R(mg,y,3,cardH);
 
-          // Header strip
-          setFill(COL.bg);rrect(mg,y,pw-mg*2,10,1,'F');
-          rect(mg,y+5,pw-mg*2,5); // flatten bottom of header corners
+          // sev badge
+          sf(sbg);sd(sc);doc.setLineWidth(0.2);RR(mg+5,y+2,16,5,1,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(5.5);st(sc);
+          doc.text(sev,mg+13,y+5.8,{align:'center'});
 
-          // Severity badge
-          setFill(sb);setDraw(sbd);doc.setLineWidth(0.3);rrect(mg+2,y+2,16,6,1,'FD');
-          doc.setFont('helvetica','bold');doc.setFontSize(6);setTxt(sc);
-          doc.text(sev,mg+10,y+6.5,{align:'center'});
-
-          // Type badge
-          setFill(COL.grey);setDraw(COL.border);rrect(mg+20,y+2,Math.min(fd.type.length*1.8+4,35),6,1,'FD');
-          doc.setFont('helvetica','normal');doc.setFontSize(6);setTxt(COL.textMid);
-          doc.text(fd.type,mg+22,y+6.5);
-
-          // Vendor + file
-          doc.setFont('helvetica','bold');doc.setFontSize(7.5);setTxt(COL.text);
-          var vfStr=(fd.vendor||'?')+' \u00B7 '+(fd.file||'').slice(0,30);
-          var vfX=pw-mg-2;
+          // type + vendor
+          doc.setFont('helvetica','bold');doc.setFontSize(7);st(C2.dark);
+          doc.text(fd.type,mg+24,y+5.8);
+          doc.setFont('helvetica','normal');doc.setFontSize(6.5);st(C2.mid);
+          doc.text((fd.vendor||'').slice(0,35),pw-mg-2,y+5.8,{align:'right'});
           if(fd.over>0){
-            // Overcharge pill
-            setFill(COL.redLight);setDraw(COL.redBorder);rrect(pw-mg-40,y+2,38,6,1,'FD');
-            doc.setFont('helvetica','bold');doc.setFontSize(6);setTxt(COL.red);
-            doc.text(fmtINR(fd.over)+' at risk',pw-mg-21,y+6.5,{align:'center'});
-            vfX=pw-mg-42;
+            doc.setFont('helvetica','bold');doc.setFontSize(7);st(C2.red);
+            doc.text(fI(fd.over)+' at risk',pw-mg-2,y+5.8,{align:'right'});
+            doc.setFont('helvetica','normal');doc.setFontSize(6.5);st(C2.mid);
+            doc.text((fd.vendor||'').slice(0,28),pw-mg-2-doc.getTextWidth(fI(fd.over)+' at risk')-4,y+5.8,{align:'right'});
           }
-          doc.setFont('helvetica','bold');doc.setFontSize(7);setTxt(COL.text);
-          var vfTrimmed=doc.splitTextToSize(vfStr,vfX-mg-58)[0]||vfStr.slice(0,40);
-          doc.text(vfTrimmed,pw-mg-(fd.over>0?44:2),y+6.5,{align:'right'});
 
-          // Separator
-          setDraw(COL.border);line(mg,y+10,mg+pw-mg*2,y+10);
+          // description
+          doc.setFont('helvetica','normal');doc.setFontSize(7.5);st(C2.dark);
+          doc.text(descL,mg+5,y+11);
+          var bodyY=y+10+descL.length*4.5;
 
-          // Description
-          var bodyY=y+14;
-          doc.setFont('helvetica','normal');doc.setFontSize(8);setTxt(COL.textMid);
-          doc.text(descLines,mg+4,bodyY);
-          bodyY+=descLines.length*4.5+3;
-
-          // Action box
-          setFill(COL.amberLight);setDraw(COL.amberBorder);doc.setLineWidth(0.3);
-          rrect(mg+3,bodyY,pw-mg*2-6,actLines.length*4+6,1,'FD');
-          doc.setFont('helvetica','bold');doc.setFontSize(7);setTxt(COL.amber);
-          doc.text(actLines,mg+6,bodyY+4.5);
-
-          y+=cardH+4;
-        });
-
-        // ════════════════════════════════════════════════
-        // PAGE 2 — Invoice Table + Exec Summary
-        // ════════════════════════════════════════════════
-        addFooter(1);
-        doc.addPage();
-        y=drawSecondaryHeader()+6;
-
-        // ── INVOICE TABLE ────────────────────────────────
-        y=sectionHeader('Invoice Summary',y);
-        var cols2=[28,20,52,16,24,24,24,22];
-        var hdrs2=['Invoice No.','Date','Vendor Name','HSN','Taxable Amt','GST','Total','Status'];
-        var rh2=7;var tableW=cols2.reduce(function(s,c){return s+c;},0);
-
-        // Table header
-        setFill(COL.navy);setDraw(COL.navy);doc.setLineWidth(0);
-        rect(mg,y,tableW,rh2);
-        doc.setFont('helvetica','bold');doc.setFontSize(6.5);setTxt(COL.white);
-        var hx=mg;
-        hdrs2.forEach(function(h,i){
-          var align=i>=4?'right':'left';
-          var tx=align==='right'?hx+cols2[i]-2:hx+2;
-          doc.text(h,tx,y+5,{align:align});
-          hx+=cols2[i];
-        });
-        y+=rh2;
-
-        var tBilled2=0,tTax2=0,tGST2=0;
-        _filtered.forEach(function(f,ri){
-          y=pageCheck(y,rh2+1);
-          function gf2(n){var x=f.extraction&&f.extraction.fields&&f.extraction.fields.find(function(x){return x.field===n&&x.conf>0;});return x?x.value:'—';}
-          var inv=gf2('Invoice Number'),invDate=gf2('Invoice Date'),vn=gf2('Vendor Name'),hsn=gf2('HSN / SAC Code');
-          var tax=pAmt(gf2('Taxable Amount')),tot=pAmt(gf2('Invoice Total'));
-          var cgst=pAmt(gf2('CGST')),sgst=pAmt(gf2('SGST')),igst=pAmt(gf2('IGST'));
-          var gstAmt=cgst+sgst+igst;if(!gstAmt&&tot&&tax)gstAmt=tot-tax;
-          tBilled2+=tot;tTax2+=tax;tGST2+=gstAmt;
-          var isFlagged=flaggedFiles.has(f.name)||rptFindings.some(function(fd){return fd.file&&fd.file.includes(f.name);});
-
-          setFill(ri%2===0?COL.bg:COL.white);setDraw(COL.border);doc.setLineWidth(0.2);
-          rect(mg,y,tableW,rh2,'FD');
-
-          // Left flag accent
-          if(isFlagged){setFill(COL.red);rect(mg,y,1.5,rh2);}
-          else{setFill(COL.green);rect(mg,y,1.5,rh2);}
-
-          doc.setFont('courier','normal');doc.setFontSize(6.5);setTxt(COL.text);
-          hx=mg;
-          var cells=[
-            inv.slice(0,14),
-            invDate.slice(0,10),
-            vn.slice(0,20),
-            (hsn||'—').slice(0,8),
-            '',// taxable — right aligned
-            '',// gst — right aligned
-            '',// total — right aligned
-            '',// status
-          ];
-          // Left-aligned cells
-          [0,1,2,3].forEach(function(ci){
-            doc.setFont('courier','normal');doc.setFontSize(ci===0?6:6.5);setTxt(COL.text);
-            var cx2=hx+cols2.slice(0,ci).reduce(function(s,c){return s+c;},0);
-            doc.text(cells[ci],cx2+2,y+5);
-          });
-          // Right-aligned numbers
-          var rCells=[
-            {i:4,v:tax>0?fmtINR(tax):'—'},
-            {i:5,v:gstAmt>0?fmtINR(gstAmt):'—'},
-            {i:6,v:tot>0?fmtINR(tot):'—'},
-          ];
-          rCells.forEach(function(rc){
-            var rx=mg+cols2.slice(0,rc.i).reduce(function(s,c){return s+c;},0);
-            doc.setFont('courier','bold');doc.setFontSize(6.5);setTxt(rc.i===6?COL.text:COL.textMid);
-            doc.text(rc.v,rx+cols2[rc.i]-2,y+5,{align:'right'});
-          });
-          // Status badge
-          var stX=mg+cols2.slice(0,7).reduce(function(s,c){return s+c;},0);
-          if(isFlagged){
-            setFill(COL.redLight);setDraw(COL.redBorder);rrect(stX+1,y+1.5,20,4,1,'FD');
-            doc.setFont('helvetica','bold');doc.setFontSize(5.5);setTxt(COL.red);
-            doc.text('\u26A0 Flagged',stX+11,y+4.8,{align:'center'});
-          }else{
-            setFill(COL.greenLight);setDraw([169,223,191]);rrect(stX+1,y+1.5,20,4,1,'FD');
-            doc.setFont('helvetica','bold');doc.setFontSize(5.5);setTxt(COL.green);
-            doc.text('\u2713 Clean',stX+11,y+4.8,{align:'center'});
+          // action
+          if(fd.action){
+            sf([254,252,232]);sd([250,220,100]);doc.setLineWidth(0.2);
+            RR(mg+4,bodyY,cw-8,actL.length*4+6,1,'FD');
+            doc.setFont('helvetica','bold');doc.setFontSize(6.5);st(C2.amber);
+            doc.text('\u25B6 Action: ',mg+6,bodyY+4.5);
+            doc.setFont('helvetica','normal');st(C2.dark);
+            doc.text(actL,mg+24,bodyY+4.5);
           }
-          y+=rh2;
+          y+=cardH+5;
         });
+      }
 
-        // Totals row
-        setFill(COL.grey);setDraw(COL.border);rect(mg,y,tableW,rh2,'FD');
-        doc.setFont('helvetica','bold');doc.setFontSize(7);setTxt(COL.text);
-        doc.text('TOTALS',mg+2,y+5);
-        var tCols=[{i:4,v:tTax2},{i:5,v:tGST2},{i:6,v:tBilled2}];
-        tCols.forEach(function(tc){
-          var tx2=mg+cols2.slice(0,tc.i).reduce(function(s,c){return s+c;},0);
-          doc.text(fmtINR(tc.v),tx2+cols2[tc.i]-2,y+5,{align:'right'});
-        });
-        y+=rh2+8;
+      // ── FOOTERS on all pages ──────────────────────────────
+      var totalPgs=doc.internal.getNumberOfPages();
+      for(var p=1;p<=totalPgs;p++){footer(p);}
 
-        // ── EXECUTIVE SUMMARY ────────────────────────────
-        y=pageCheck(y,60);
-        y=sectionHeader('Audit Conclusion',y);
-
-        // Dark summary box
-        setFill(COL.navy);rrect(mg,y,pw-mg*2,1,1,'F'); // header
-        doc.setFont('helvetica','bold');doc.setFontSize(10);setTxt([232,244,253]);
-        doc.text('Executive Summary',mg+8,y+5.5);
-        setFill(COL.blue);rect(mg,y,3,8);
-        y+=8;
-
-        var summaryText=execSummary||
-          ('This audit reviewed '+_filtered.length+' invoice'+(+_filtered.length!==1?'s':'')+
-           ' totalling '+fmtINR(_totalBilled)+' from '+vSpendList.length+' vendor'+(vSpendList.length!==1?'s':'')+'. '+
-           'The AI audit engine identified '+rptFindings.length+' issue'+(rptFindings.length!==1?'s':'')+
-           (totalOver>0?' representing '+fmtINR(totalOver)+' ('+overRate+'%) of total billed value at risk.':' — all invoices passed checks.')+
-           (sevCounts.CRITICAL>0?' '+sevCounts.CRITICAL+' critical finding'+(sevCounts.CRITICAL>1?'s require':'requires')+' immediate action.':''));
-
-        var summaryLines=doc.splitTextToSize(summaryText,pw-mg*2-12);
-        var boxH=summaryLines.length*4.5+14+34+24;
-        setFill([247,249,251]);setDraw(COL.border);doc.setLineWidth(0.3);
-        rrect(mg,y,pw-mg*2,boxH,1,'FD');
-        setFill(COL.navyLight);rect(mg,y,3,boxH); // left accent
-        doc.setFont('helvetica','normal');doc.setFontSize(8.5);setTxt(COL.textMid);
-        doc.text(summaryLines,mg+8,y+6);
-        y+=summaryLines.length*4.5+10;
-
-        // Stat row inside summary
-        var statW=(pw-mg*2-12)/3;
-        var stats=[
-          {l:'TOTAL AT RISK',   v:fmtINR(totalOver),              c:COL.red},
-          {l:'CLEARED FOR PMT', v:fmtINR(_totalBilled-totalOver), c:COL.green},
-          {l:'INVOICES FLAGGED',v:flaggedFiles.size+' of '+_filtered.length, c:COL.amber},
-        ];
-        stats.forEach(function(st,i){
-          var sx=mg+4+i*(statW+2);
-          setFill(COL.navy);rrect(sx,y,statW,16,1,'F');
-          doc.setFont('helvetica','bold');doc.setFontSize(11);setTxt(st.c);
-          doc.text(st.v,sx+statW/2,y+10,{align:'center'});
-          doc.setFont('helvetica','normal');doc.setFontSize(6);setTxt([180,200,215]);
-          doc.text(st.l,sx+statW/2,y+14.5,{align:'center'});
-        });
-        y+=22;
-
-        // Recommendations
-        doc.setFont('helvetica','bold');doc.setFontSize(6.5);setTxt(COL.textLight);
-        doc.text('RECOMMENDED ACTIONS',mg+8,y);
-        y+=5;
-        var recActions=rptFindings.slice(0,4).map(function(fd,i){
-          return {n:String(i+1).padStart(2,'0'),text:fd.action||('Review '+fd.type+' for '+fd.vendor)};
-        });
-        if(recActions.length===0){
-          recActions=[{n:'01',text:'All invoices cleared. Approve payments as scheduled.'}];
-        }
-        recActions.forEach(function(r){
-          var rLines=doc.splitTextToSize(r.text,pw-mg*2-22);
-          doc.setFont('helvetica','bold');doc.setFontSize(8);setTxt(COL.blue);
-          doc.text(r.n,mg+8,y+3.5);
-          doc.setFont('helvetica','normal');doc.setFontSize(8);setTxt(COL.textMid);
-          doc.text(rLines,mg+16,y+3.5);
-          y+=rLines.length*4.5+3;
-        });
-
-        y+=4;
-
-        // ── ADD FOOTERS TO ALL PAGES ──────────────────────
-        var totalPg=doc.internal.getNumberOfPages();
-        for(var p=1;p<=totalPg;p++){addFooter(p);}
-
-        doc.save('AuditIQ_Report_'+new Date().toISOString().slice(0,10)+'.pdf');
-        setGenerating(false);setGenerated(true);
-        setHistory(function(h){return [{date:dt,invoices:_filtered.length,findings:rptFindings.length}].concat(h).slice(0,5);});
-      }catch(e){setGenerating(false);alert('PDF error: '+e.message);}
-    }
-
-    // ── Use AI to generate executive summary if AI results exist ──
-    if(_aiResults&&_filtered.length>0){
-      var promptData={
-        invoiceCount:_filtered.length,
-        totalBilled:fmtINR(_totalBilled),
-        totalOvercharge:fmtINR(totalOver),
-        overchargeRate:overRate+'%',
-        findingsCount:rptFindings.length,
-        criticalCount:sevCounts.CRITICAL,
-        highCount:sevCounts.HIGH,
-        vendors:vSpendList.slice(0,3).map(function(v){return v.n+' ('+fmtINR(v.v)+')';}),
-        topFindings:rptFindings.slice(0,3).map(function(f){return f.sev+': '+f.type+' \u2014 '+f.vendor+(f.over>0?' ('+fmtINR(f.over)+')':'');})
-      };
-      fetch('/api/groq',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          model:'llama-3.3-70b-versatile',
-          temperature:0.3,
-          max_tokens:300,
-          messages:[{role:'user',content:'Write a concise 3-sentence executive summary for a professional invoice audit report for a finance manager. Data: '+JSON.stringify(promptData)+'. Be direct, factual, and professional. No bullet points. Return only the 3 sentences, nothing else.'}]
-        })
-      }).then(function(r){return r.json();})
-      .then(function(d){
-        var aiExec=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||'';
-        buildPDF(aiExec.trim());
-      })
-      .catch(function(){buildPDF('');});
-    } else {
-      buildPDF('');
-    }
+      doc.save('AuditIQ_Report_'+new Date().toISOString().slice(0,10)+'.pdf');
+      setGenerating(false);setGenerated(true);
+      setHistory(function(h){return [{date:dt,invoices:_filtered.length,findings:rptFindings.length}].concat(h).slice(0,5);});
+    }catch(e){setGenerating(false);alert('PDF error: '+e.message);}
   }
 
   function generate(){
@@ -2604,6 +2491,306 @@ function Dashboard(props){
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  ANALYTICS
+// ══════════════════════════════════════════════════════════════════
+function Analytics(props){
+  var uploadedFiles=props.uploadedFiles||[];
+  var vendorMaster=props.vendorMaster||[];
+
+  // Chart canvas refs
+  var spendRef=useRef(null);
+  var trendRef=useRef(null);
+  var taxRef=useRef(null);
+  var predictRef=useRef(null);
+  var overchargeRef=useRef(null);
+  var chartInstances=useRef({});
+
+  // ── helpers ──────────────────────────────────────────────────────
+  function getField(ex,name){
+    if(!ex||!ex.fields)return null;
+    var f=ex.fields.find(function(x){return x.field===name&&x.conf>0;});
+    if(f)return f.value;
+    var nl=name.toLowerCase();
+    f=ex.fields.find(function(x){return x.field.toLowerCase()===nl&&x.conf>0;});
+    return f?f.value:null;
+  }
+  function parseAmt(v){
+    if(!v)return 0;
+    var tokens=String(v).match(/\d[\d,]*(?:\.\d+)?/g);
+    if(!tokens)return 0;
+    var best=0;
+    tokens.forEach(function(t){var n=parseFloat(t.replace(/,/g,''));if(!isNaN(n)&&n>best)best=n;});
+    return best;
+  }
+  function fmtINR(n){
+    if(!n||isNaN(n))return '₹0';
+    if(n>=10000000)return '₹'+(n/10000000).toFixed(2)+'Cr';
+    if(n>=100000)return '₹'+(n/100000).toFixed(2)+'L';
+    return '₹'+Math.round(n).toLocaleString('en-IN');
+  }
+
+  var approved=uploadedFiles.filter(function(f){return f.extraction&&f.zone==='INVOICES';});
+
+  // ── Build data sets ───────────────────────────────────────────────
+  // Vendor spend
+  var vSpend={};
+  approved.forEach(function(f){
+    var vn=getField(f.extraction,'Vendor Name')||'Unknown';
+    vSpend[vn]=(vSpend[vn]||0)+parseAmt(getField(f.extraction,'Invoice Total'));
+  });
+  var vLabels=Object.keys(vSpend).sort(function(a,b){return vSpend[b]-vSpend[a];}).slice(0,8);
+  var vData=vLabels.map(function(k){return Math.round(vSpend[k]);});
+
+  // Monthly trend
+  var mSpend={};
+  approved.forEach(function(f){
+    var d=getField(f.extraction,'Invoice Date')||'';
+    var m=null;
+    var dm=d.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+    if(dm){var yr=dm[3].length===2?'20'+dm[3]:dm[3];m=yr+'-'+dm[2].padStart(2,'0');}
+    else{var dm2=d.match(/(\d{4})-(\d{2})/);if(dm2)m=dm2[1]+'-'+dm2[2];}
+    if(m){mSpend[m]=(mSpend[m]||0)+parseAmt(getField(f.extraction,'Invoice Total'));}
+  });
+  var mLabels=Object.keys(mSpend).sort();
+  var mData=mLabels.map(function(k){return Math.round(mSpend[k]);});
+
+  // Tax breakdown
+  var totalCGST=0,totalSGST=0,totalIGST=0,totalTaxable=0;
+  approved.forEach(function(f){
+    totalCGST+=parseAmt(getField(f.extraction,'CGST'));
+    totalSGST+=parseAmt(getField(f.extraction,'SGST'));
+    totalIGST+=parseAmt(getField(f.extraction,'IGST'));
+    totalTaxable+=parseAmt(getField(f.extraction,'Taxable Amount'));
+  });
+
+  // Predictive: simple linear extrapolation from monthly data
+  function buildPrediction(){
+    if(mData.length<2)return {labels:[],actual:[],predicted:[]};
+    var n=mData.length;
+    var sumX=0,sumY=0,sumXY=0,sumX2=0;
+    for(var i=0;i<n;i++){sumX+=i;sumY+=mData[i];sumXY+=i*mData[i];sumX2+=i*i;}
+    var slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX)||0;
+    var intercept=(sumY-slope*sumX)/n;
+    var predLabels=mLabels.slice();
+    var predActual=mData.slice();
+    var predFuture=[];
+    // Add 3 future months
+    var lastDate=mLabels[mLabels.length-1];
+    var parts=lastDate.split('-');
+    var yr=parseInt(parts[0]),mo=parseInt(parts[1]);
+    for(var j=1;j<=3;j++){
+      mo++;if(mo>12){mo=1;yr++;}
+      var lbl=yr+'-'+(mo<10?'0':'')+mo;
+      predLabels.push(lbl);
+      predFuture.push(Math.max(0,Math.round(intercept+slope*(n-1+j))));
+    }
+    return {labels:predLabels,actual:predActual,predicted:[...new Array(n).fill(null),...predFuture]};
+  }
+  var pred=buildPrediction();
+
+  // ── Destroy + render charts ──────────────────────────────────────
+  function destroyChart(key){
+    if(chartInstances.current[key]){
+      try{chartInstances.current[key].destroy();}catch(e){}
+      delete chartInstances.current[key];
+    }
+  }
+
+  useEffect(function(){
+    if(!window.Chart)return;
+    var dark=C.dark;
+    var gridColor=dark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.06)';
+    var tickColor=dark?'rgba(255,255,255,0.38)':'rgba(0,0,0,0.42)';
+    var ff="'DM Sans',sans-serif";
+    var COLORS=['#3B82F6','#8B5CF6','#10B981','#F59E0B','#EF4444','#06B6D4','#F97316','#EC4899'];
+
+    // ── 1. Spend Trend & Forecast (bar + dashed forecast)
+    if(spendRef.current&&mLabels.length>0){
+      destroyChart('spend');
+      // Build combined actual + forecast bars
+      var allLabels=pred.labels;
+      var actualBars=mData.concat(new Array(pred.predicted.filter(function(v){return v!==null;}).length).fill(null));
+      var forecastBars=new Array(mData.length).fill(null).concat(pred.predicted.filter(function(v){return v!==null;}));
+      chartInstances.current['spend']=new Chart(spendRef.current,{
+        type:'bar',
+        data:{
+          labels:allLabels,
+          datasets:[
+            {label:'Actual Spend',data:actualBars,backgroundColor:'#3B82F6',borderRadius:5,borderSkipped:false,barPercentage:.7},
+            {label:'Forecast',data:forecastBars,backgroundColor:'rgba(245,158,11,0.55)',borderRadius:5,borderSkipped:false,barPercentage:.7,
+             borderColor:'#F59E0B',borderWidth:1.5}
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:true,position:'bottom',labels:{color:tickColor,font:{family:ff,size:10},padding:14,boxWidth:10,boxHeight:10}},
+            tooltip:{callbacks:{label:function(ctx){return ' '+fmtINR(ctx.parsed.y);}}}},
+          scales:{x:{grid:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},maxRotation:0}},
+            y:{grid:{color:gridColor},border:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},callback:function(v){return fmtINR(v);}}}}}
+      });
+    }
+
+    // ── 2. Overcharge Risk (horizontal bar per vendor)
+    if(overchargeRef.current&&vLabels.length>0){
+      destroyChart('overcharge');
+      var totalSpendVal=vData.reduce(function(s,v){return s+v;},0);
+      chartInstances.current['overcharge']=new Chart(overchargeRef.current,{
+        type:'bar',
+        data:{
+          labels:vLabels.map(function(v){return v.length>18?v.slice(0,17)+'…':v;}),
+          datasets:[{label:'Spend',data:vData,backgroundColor:COLORS.slice(0,vLabels.length),borderRadius:4,borderSkipped:false}]
+        },
+        options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){
+            var pct=totalSpendVal>0?((ctx.parsed.x/totalSpendVal)*100).toFixed(1):0;
+            return ' '+fmtINR(ctx.parsed.x)+' ('+pct+'%)';
+          }}}},
+          scales:{x:{grid:{color:gridColor},border:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},callback:function(v){return fmtINR(v);}}},
+            y:{grid:{display:false},ticks:{color:tickColor,font:{family:ff,size:10}}}}}
+      });
+    }
+
+    // ── 3. Audit Health — tax donut
+    if(taxRef.current&&(totalCGST+totalSGST+totalIGST)>0){
+      destroyChart('tax');
+      chartInstances.current['tax']=new Chart(taxRef.current,{
+        type:'doughnut',
+        data:{
+          labels:['CGST','SGST','IGST'],
+          datasets:[{data:[Math.round(totalCGST),Math.round(totalSGST),Math.round(totalIGST)],
+            backgroundColor:['#3B82F6','#8B5CF6','#10B981'],
+            borderColor:dark?'#0D1117':'#FFFFFF',borderWidth:3,hoverOffset:6}]
+        },
+        options:{responsive:true,maintainAspectRatio:false,cutout:'66%',
+          plugins:{legend:{position:'bottom',labels:{color:tickColor,font:{family:ff,size:10},padding:12,boxWidth:9,boxHeight:9}},
+            tooltip:{callbacks:{label:function(ctx){return ' '+fmtINR(ctx.parsed);}}}}}
+      });
+    }
+
+    // ── 4. Monthly trend line
+    if(trendRef.current&&mLabels.length>0){
+      destroyChart('trend');
+      chartInstances.current['trend']=new Chart(trendRef.current,{
+        type:'line',
+        data:{
+          labels:pred.labels,
+          datasets:[
+            {label:'Actual',data:mData.concat(new Array(pred.predicted.filter(function(v){return v!==null;}).length).fill(null)),
+              borderColor:'#10B981',backgroundColor:'rgba(16,185,129,0.07)',fill:true,tension:.42,
+              pointBackgroundColor:'#10B981',pointRadius:3,pointHoverRadius:5},
+            {label:'Forecast',data:new Array(mData.length).fill(null).concat(pred.predicted.filter(function(v){return v!==null;})),
+              borderColor:'#F59E0B',backgroundColor:'rgba(245,158,11,0.06)',fill:true,tension:.42,
+              pointBackgroundColor:'#F59E0B',pointRadius:3,pointHoverRadius:5,borderDash:[5,4]}
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:true,position:'bottom',labels:{color:tickColor,font:{family:ff,size:10},padding:12,boxWidth:10,boxHeight:10}},
+            tooltip:{callbacks:{label:function(ctx){return ' '+fmtINR(ctx.parsed.y);}}}},
+          scales:{x:{grid:{color:gridColor},border:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},maxRotation:0}},
+            y:{grid:{color:gridColor},border:{display:false},ticks:{color:tickColor,font:{family:ff,size:10},callback:function(v){return fmtINR(v);}}}}}
+      });
+    }
+
+    return function(){['spend','overcharge','tax','trend'].forEach(destroyChart);};
+  },[approved.length,C.dark]);
+
+  // ── Derived stats ─────────────────────────────────────────────────
+  var hasData=approved.length>0;
+  var totalSpend=vData.reduce(function(s,v){return s+v;},0);
+  var totalTax=totalCGST+totalSGST+totalIGST;
+  var effTaxRate=totalTaxable>0?((totalTax/totalTaxable)*100).toFixed(1)+'%':'—';
+  var topVendor=vLabels[0]||'—';
+  var topVendorAmt=vData[0]||0;
+  var nextMonthForecast=pred.predicted.find(function(v){return v!==null;})||null;
+
+  // ── KPI cards ─────────────────────────────────────────────────────
+  function KpiCard(label,value,sub,color,icon){
+    return h('div',{style:{background:C.panel,border:'1px solid '+C.border,borderRadius:14,padding:'16px 18px',display:'flex',flexDirection:'column',gap:6}},
+      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},
+        h('div',{style:{fontSize:10,fontWeight:600,color:C.faint,textTransform:'uppercase',letterSpacing:.9}},label),
+        h('div',{style:{width:30,height:30,borderRadius:8,background:color+'18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}},icon)
+      ),
+      h('div',{style:{fontSize:20,fontWeight:800,color:C.text,letterSpacing:-.5}},value),
+      sub?h('div',{style:{fontSize:10,color:C.faint}},sub):null
+    );
+  }
+
+  function ChartCard(title,sub,height,canvasRef,empty){
+    return h('div',{style:{background:C.panel,border:'1px solid '+C.border,borderRadius:14,padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}},
+      h('div',null,
+        h('div',{style:{fontSize:12,fontWeight:700,color:C.text}},title),
+        h('div',{style:{fontSize:10,color:C.faint,marginTop:2}},sub)
+      ),
+      empty
+        ?h('div',{style:{height:height,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:8}},
+          h('div',{style:{fontSize:28,opacity:.4}},'📊'),
+          h('div',{style:{fontSize:11,color:C.faint}},'No data yet')
+        )
+        :h('div',{style:{height:height,position:'relative'}},h('canvas',{ref:canvasRef}))
+    );
+  }
+
+  if(!hasData) return h('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:12}},
+    h('div',{style:{fontSize:40}},'📊'),
+    h('div',{style:{fontSize:14,fontWeight:700,color:C.muted}},'No Analytics Data Yet'),
+    h('div',{style:{fontSize:12,color:C.faint}},'Upload and extract invoices to generate charts.')
+  );
+
+  return h('div',{style:{display:'flex',flexDirection:'column',gap:16,height:'100%',overflow:'auto'}},
+
+    // ── Row 1: KPI strip ─────────────────────────────────────────
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,flexShrink:0}},
+      KpiCard('Total Spend',fmtINR(totalSpend),approved.length+' invoices',C.blue,'💰'),
+      KpiCard('Top Vendor',topVendor.length>14?topVendor.slice(0,13)+'…':topVendor,fmtINR(topVendorAmt),C.purple,'🏢'),
+      KpiCard('Total Tax',fmtINR(totalTax),'Eff. rate: '+effTaxRate,C.amber,'🧾'),
+      KpiCard('Next Month Est.',nextMonthForecast?fmtINR(nextMonthForecast):'—',nextMonthForecast?'Forecast projection':'Need 2+ months data',C.green,'🔮')
+    ),
+
+    // ── Row 2: Spend Trend & Forecast (wide) + Tax Donut ────────
+    h('div',{style:{display:'grid',gridTemplateColumns:'2fr 1fr',gap:12,flexShrink:0}},
+      ChartCard(
+        'Spend Trend & Forecast',
+        'Actual spend + '+(pred.predicted.filter(function(v){return v!==null;}).length)+'-month projection',
+        220,spendRef,mLabels.length===0
+      ),
+      h('div',{style:{background:C.panel,border:'1px solid '+C.border,borderRadius:14,padding:'18px 20px',display:'flex',flexDirection:'column',gap:14}},
+        h('div',null,
+          h('div',{style:{fontSize:12,fontWeight:700,color:C.text}},'Tax Breakdown'),
+          h('div',{style:{fontSize:10,color:C.faint,marginTop:2}},'CGST · SGST · IGST distribution')
+        ),
+        totalTax>0
+          ?h('div',{style:{flex:1,position:'relative',height:180}},h('canvas',{ref:taxRef}))
+          :h('div',{style:{height:180,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:8}},
+            h('div',{style:{fontSize:28,opacity:.4}},'🧾'),
+            h('div',{style:{fontSize:11,color:C.faint}},'No tax data')
+          ),
+        totalTax>0?h('div',{style:{display:'flex',justifyContent:'space-between',borderTop:'1px solid '+C.border,paddingTop:10,marginTop:4}},
+          [{l:'CGST',v:totalCGST,c:'#3B82F6'},{l:'SGST',v:totalSGST,c:'#8B5CF6'},{l:'IGST',v:totalIGST,c:'#10B981'}].map(function(r,i){
+            return h('div',{key:i,style:{textAlign:'center'}},
+              h('div',{style:{fontSize:11,fontWeight:700,color:r.c}},fmtINR(r.v)),
+              h('div',{style:{fontSize:9,color:C.faint,marginTop:2}},r.l)
+            );
+          })
+        ):null
+      )
+    ),
+
+    // ── Row 3: Vendor Spend (wide) + Trend Line ──────────────────
+    h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,flexShrink:0,paddingBottom:4}},
+      ChartCard(
+        'Vendor Spend Breakdown',
+        'Total invoiced per vendor — top '+vLabels.length,
+        200,overchargeRef,vLabels.length===0
+      ),
+      ChartCard(
+        'Monthly Spend Trend',
+        mLabels.length>=2?mLabels[0]+' → '+pred.labels[pred.labels.length-1]:'Historical spend over time',
+        200,trendRef,mLabels.length===0
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  CONFIGURATION
 // ══════════════════════════════════════════════════════════════════
 function Configuration(props){
@@ -2840,6 +3027,7 @@ var NAV=[
   {id:'upload',   l:'Document Hub',d:IC.upload},
   {id:'audit',    l:'Audit Findings',d:IC.shield},
   {id:'vendors',  l:'Vendor Master',d:IC.users},
+  {id:'analytics',l:'Analytics',   d:IC.chart},
   {id:'reports',  l:'Reports',     d:IC.file},
   {id:'config',   l:'Configuration',d:IC.cog},
 ];
@@ -2873,7 +3061,7 @@ function App(){
   },[]);
   function go(id){setPage(id);setPk(function(n){return n+1;});}
   var props={uploadedFiles:uploadedFiles,setUploadedFiles:setUploadedFiles,vendorMaster:vendorMaster,setVendorMaster:setVendorMaster,config:config,setConfig:setConfig,goTo:go,apiKey:'',aiResults:aiResults,setAiResults:setAiResults,profile:profile};
-  var pages={dashboard:Dashboard,upload:DocumentHub,audit:AuditFindings,vendors:VendorMaster,reports:Reports,config:Configuration};
+  var pages={dashboard:Dashboard,upload:DocumentHub,audit:AuditFindings,vendors:VendorMaster,analytics:Analytics,reports:Reports,config:Configuration};
   var Page=pages[page]||Dashboard;
   var auditBadge=uploadedFiles.filter(function(f){return f.status==='EXTRACTED';}).length;
   var invCount=uploadedFiles.filter(function(f){return f.zone==='INVOICES';}).length;
