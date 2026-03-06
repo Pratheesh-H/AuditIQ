@@ -652,6 +652,7 @@ function DocumentHub(props){
         uploaded:new Date().toLocaleTimeString(),extraction:null,_ref:f};
     });
     setUploadedFiles(function(p){return nfs.concat(p);});
+    props.setAiResults&&props.setAiResults(null); // reset AI on new upload
     // Sequential upload — one at a time with delay to avoid Gemini 429s
     (async function(){
     for(var _i=0;_i<nfs.length;_i++){var nf=nfs[_i];
@@ -863,80 +864,8 @@ function extractTaxAmt(v){
 // ══════════════════════════════════════════════════════════════════
 //  AUDIT FINDINGS
 // ══════════════════════════════════════════════════════════════════
-async function runGroqOversight(invoices,contracts,rateCards,vmData,ruleFindings){
-  var AUDIT_FIELDS=['Vendor Name','Vendor GSTIN','Invoice Number','Invoice Total',
-    'Taxable Amount','CGST','SGST','IGST','Rate per Unit','Quantity',
-    'HSN / SAC Code','IFSC Code','Invoice Date','Contracted Rate','Rate Card Reference'];
-  function af(ex){
-    if(!ex||!ex.fields)return{};
-    var o={};
-    ex.fields.filter(function(x){return !x.isMeta&&x.conf>0&&AUDIT_FIELDS.indexOf(x.field)!==-1;})
-      .forEach(function(x){o[x.field]=x.value;});
-    return o;
-  }
-  // Only send key fields to reduce tokens ~60%
-  // Build a plain-English audit narrative using AI
-  var rulesSummary=ruleFindings.map(function(f){
-    return {type:f.type,title:f.title,vendor:f.vendorName,amount:f.overchargeAmt,desc:f.desc};
-  });
-  var prompt='You are a senior Indian GST and procurement auditor writing a board-level audit report.\n'
-    +'I have already detected the following rule-based findings:\n'+JSON.stringify(rulesSummary)+'\n\n'
-    +'Invoice data:\n'+JSON.stringify(invoices.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
-    +'\n\nContracts/Rate cards:\n'+JSON.stringify(contracts.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
-    +'\n\nVendor master:\n'+JSON.stringify(vmData.map(function(v){return{name:v.name,gstin:v.gstin};}))
-    +'\n\nReturn ONLY a valid JSON object (no markdown) with this exact structure:\n'
-    +'{\n'
-    +'  "overallSummary": "3-5 sentence plain English overview of the entire audit. Mention total risk, key vendors flagged, and overall health of the invoice set. Write as if explaining to a finance manager who is not a GST expert.",\n'
-    +'  "findingNarratives": [\n'
-    +'    {\n'
-    +'      "findingTitle": "exact title from rule findings above",\n'
-    +'      "plainEnglish": "2-4 sentence explanation in simple language. Explain what went wrong, why it matters, what money is at risk, and what the vendor may have done incorrectly. Avoid jargon.",\n'
-    +'      "riskImpact": "One sentence on financial or compliance risk if not acted upon.",\n'
-    +'      "immediateStep": "One clear sentence on what the accounts team should do TODAY."\n'
-    +'    }\n'
-    +'  ],\n'
-    +'  "additionalFindings": [\n'
-    +'    {"type":"COMPLIANCE","severity":"HIGH","title":"...","vendorName":"...","invoiceFile":"...","overchargeAmt":0,"desc":"...","action":"...","plainEnglish":"..."}\n'
-    +'  ]\n'
-    +'}\n'
-    +'additionalFindings = any NEW issues you spot that the rules missed (fuzzy name match, missing fields, contract violations). Empty array if none.';
-  var resp=await fetch('/api/groq',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'user',content:prompt}],max_tokens:2048,temperature:0.1})});
-  if(!resp.ok){var et=await resp.text().catch(function(){return'';});throw new Error('Groq '+resp.status+': '+et.slice(0,200));}
-  var data=await resp.json();
-  var raw='';try{raw=data.choices[0].message.content||'';}catch(e){raw='';}
-  raw=raw.trim().replace(/^```json\s*/i,'').replace(/^```/,'').replace(/```$/,'').trim();
-  var parsed;
-  try{parsed=JSON.parse(raw);}
-  catch(e){
-    var mo=raw.match(/\{[\s\S]*\}/);
-    if(mo){try{parsed=JSON.parse(mo[0]);}catch(e2){parsed=null;}}
-  }
-  if(!parsed||typeof parsed!=='object'){return{summary:'',narratives:{},extras:[]};}
-  // Build narratives lookup keyed by finding title
-  var narratives={};
-  (parsed.findingNarratives||[]).forEach(function(n){
-    if(n&&n.findingTitle){
-      narratives[n.findingTitle]={
-        plainEnglish:String(n.plainEnglish||''),
-        riskImpact:String(n.riskImpact||''),
-        immediateStep:String(n.immediateStep||'')
-      };
-    }
-  });
-  // Extra findings AI spotted beyond rule-engine
-  var extras=(parsed.additionalFindings||[]).map(function(it,i){return{
-    id:'ai-'+Date.now()+'-'+i,
-    type:String(it.type||'COMPLIANCE').toUpperCase(),
-    severity:['CRITICAL','HIGH','MEDIUM','LOW'].includes(String(it.severity||'').toUpperCase())?String(it.severity).toUpperCase():'MEDIUM',
-    title:String(it.title||'AI Finding'),vendorName:String(it.vendorName||'Unknown'),
-    overchargeAmt:parseFloat(it.overchargeAmt)||0,
-    desc:String(it.desc||''),plainEnglish:String(it.plainEnglish||''),
-    action:String(it.action||''),file:String(it.invoiceFile||''),ref:'AI Analysis',isAI:true};});
-  return{summary:String(parsed.overallSummary||''),narratives:narratives,extras:extras};
-}
+// runGroqOversight removed — replaced by handleRunAI
+
 
 function AuditFindings(props){
   var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster,config=props.config;
@@ -1044,33 +973,16 @@ function AuditFindings(props){
         +'INVOICES:\n'+JSON.stringify(invoiceData,null,1)+'\n\n'
         +(contractData.length?'CONTRACTS/RATE CARDS:\n'+JSON.stringify(contractData.concat(rateData),null,1)+'\n\n':'')
         +(vmData.length?'VENDOR MASTER:\n'+JSON.stringify(vmData,null,1)+'\n\n':'')
-        +'AUDIT RULES TO CHECK:\n'
-        +'1. GST CALCULATION: Verify Invoice Total = Taxable Amount + CGST amount + SGST amount + IGST amount (within Rs.1 tolerance). Parse amounts carefully — fields like "9% — Rs.40500.00" mean the tax amount is Rs.40500.\n'
-        +'2. GSTIN FORMAT: Must match pattern: 2 digits + 5 uppercase letters + 4 digits + 1 letter + 1 alphanumeric + Z + 1 alphanumeric.\n'
-        +'3. BANK MISMATCH: If vendor IFSC in invoice differs from vendor master IFSC for the same vendor — flag as CRITICAL fraud risk.\n'
-        +'4. RATE OVERBILLING: If invoice rate per unit exceeds contracted rate or rate card rate for the same vendor by more than 5%.\n'
-        +'5. DUPLICATE INVOICE: Same invoice number appearing on multiple files.\n'
-        +'6. MISSING CRITICAL FIELDS: Flag if Invoice Total, Vendor Name, or Vendor GSTIN is missing.\n'
-        +'7. ANY OTHER ANOMALY you notice as an experienced auditor.\n\n'
-        +'Return ONLY this JSON (no markdown):\n'
-        +'{\n'
-        +'  "overallSummary": "3-5 sentence plain English overview for a finance manager. Mention total invoices checked, key issues found, total money at risk, and overall audit health.",\n'
-        +'  "findings": [\n'
-        +'    {\n'
-        +'      "type": "CALC_ERROR|COMPLIANCE|FRAUD|PRICING|DUPLICATE|GST_RATE|MISSING_FIELD|OTHER",\n'
-        +'      "severity": "CRITICAL|HIGH|MEDIUM|LOW",\n'
-        +'      "title": "Short title of finding",\n'
-        +'      "vendorName": "vendor name or Unknown",\n'
-        +'      "invoiceFile": "filename",\n'
-        +'      "overchargeAmt": 0,\n'
-        +'      "desc": "Clear factual description of what is wrong and exact amounts involved",\n'
-        +'      "plainEnglish": "2-3 sentence simple explanation for non-accountants",\n'
-        +'      "action": "Specific action the accounts team should take TODAY"\n'
-        +'    }\n'
-        +'  ],\n'
-        +'  "findingNarratives": {}\n'
-        +'}\n'
-        +'If no issues found, return empty findings array. Be accurate — do NOT flag issues that do not exist.';
+        +'AUDIT RULES:\n'
+        +'1. GST CALC: Parse amounts carefully. e.g. "9% Rs.40500" means amount=40500. Verify Total = Taxable + all tax amounts. Tolerance Rs.2. Only flag clear arithmetic errors.\n'
+        +'2. GSTIN FORMAT: 15 chars = 2digits+5letters+4digits+1letter+1char+Z+1char. Flag as GSTIN_FORMAT if invalid or missing.\n'
+        +'3. BANK MISMATCH: Invoice IFSC differs from vendor master IFSC for same vendor = CRITICAL BANK_MISMATCH.\n'
+        +'4. RATE OVERBILLING: Only flag if you have explicit rate card data showing a lower agreed rate.\n'
+        +'5. MISSING FIELD: Only flag if Invoice Total or Vendor Name is completely absent.\n'
+        +'6. Be conservative. Do not create speculative findings without clear evidence.\n\n'
+        +'Return ONLY valid JSON, no markdown:\n'
+        +'{"overallSummary":"3-5 sentence overview for finance manager","findings":[{"type":"CALC_ERROR or COMPLIANCE or FRAUD or PRICING or DUPLICATE or GST_RATE or MISSING_FIELD or GSTIN_FORMAT or RATE_OVERBILLING or BANK_MISMATCH or OTHER","severity":"CRITICAL or HIGH or MEDIUM or LOW","title":"Short title","vendorName":"vendor name","invoiceFile":"filename","overchargeAmt":0,"desc":"Factual description with exact amounts","plainEnglish":"2-3 sentence explanation for non-accountants","action":"Specific step to take today"}]}\n'
+        +'Rules: empty findings array if no issues. Never invent findings. overchargeAmt must be a number. Do not flag rounding under Rs.2.';
 
       var resp=await fetch('/api/groq',{
         method:'POST',headers:{'Content-Type':'application/json'},
@@ -1111,21 +1023,21 @@ function AuditFindings(props){
     setAiRunningV(false);
   }
   var SEV={CRITICAL:{c:C.red,o:0},HIGH:{c:C.amber,o:1},MEDIUM:{c:C.blue,o:2},LOW:{c:C.green,o:3}};
-  var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing',NAME_MISMATCH:'Name Match'};
+  var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing Field',NAME_MISMATCH:'Name Mismatch',GSTIN_FORMAT:'GSTIN Format',RATE_OVERBILLING:'Rate Overbilling',BANK_MISMATCH:'Bank Mismatch',OTHER:'Other'};
   var sorted=allFindings.slice().sort(function(a,b){return (SEV[a.severity]?SEV[a.severity].o:9)-(SEV[b.severity]?SEV[b.severity].o:9);});
   var counts={ALL:allFindings.length};
   Object.keys(TYPE_LABELS).forEach(function(k){counts[k]=0;});
   allFindings.forEach(function(f){if(counts[f.type]!==undefined)counts[f.type]++;});
   var totalOvercharge=allFindings.reduce(function(s,f){return s+(f.overchargeAmt||0);},0);
   var visible=filter==='ALL'?sorted:sorted.filter(function(f){return f.type===filter;});
-  var filterKeys=['ALL','FRAUD','CALC_ERROR','GST_RATE','PRICING','SURCHARGE','DUPLICATE','COMPLIANCE','CONTRACT_VIOLATION','PERIOD_VIOLATION','NAME_MISMATCH','MISSING_FIELD'];
+  var filterKeys=['ALL','FRAUD','CALC_ERROR','GST_RATE','PRICING','SURCHARGE','DUPLICATE','COMPLIANCE','GSTIN_FORMAT','RATE_OVERBILLING','BANK_MISMATCH','MISSING_FIELD','OTHER'];
 
   return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
     totalOvercharge>0&&approved.length>0?h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}},
       h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.red}},
         h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Total Overcharge Detected'),
         h('div',{style:{fontSize:22,fontWeight:800,color:C.red,fontFamily:"'DM Mono',monospace"}},'\u20B9'+totalOvercharge.toLocaleString('en-IN',{minimumFractionDigits:2})),
-        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},findings.length+' finding'+(findings.length!==1?'s':'')+' across '+approved.length+' invoices')
+        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},allFindings.length+' finding'+(allFindings.length!==1?'s':'')+' across '+approved.length+' invoices')
       ),
       h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.amber}},
         h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Critical / High Findings'),
@@ -1167,22 +1079,21 @@ function AuditFindings(props){
       : visible.length===0
         ? h('div',{className:'card',style:{textAlign:'center',padding:'44px 20px',color:C.green}},
             h('div',{style:{fontSize:36,marginBottom:12}},'✅'),
-            h('div',{style:{fontSize:14,fontWeight:700,marginBottom:6}},'No findings in this category'),
-            h('div',{style:{fontSize:12,color:C.muted}},approved.length+' invoice'+(approved.length>1?'s':'')+' passed all checks.')
+            h('div',{style:{fontSize:14,fontWeight:700,marginBottom:6}},filter==='ALL'?(aiDoneV?'Clean audit — no issues found':'No rule-based findings'):'No findings in this category'),
+            h('div',{style:{fontSize:12,color:C.muted}},approved.length+' invoice'+(approved.length>1?'s':'')+' passed all checks.'+(filter==='ALL'&&!aiDoneV?' Run AI Audit for deeper analysis.':'')+'')
           )
         : h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
             // ── AI Overall Summary Banner ──────────────────────────
             aiSummary?h('div',{style:{background:'linear-gradient(135deg,rgba(139,92,246,0.12),rgba(109,40,217,0.06))',border:'1px solid rgba(139,92,246,0.3)',borderRadius:12,padding:'16px 20px',marginBottom:4}},
               h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10}},
                 h('span',{style:{fontSize:14}},'🧠'),
-                h('span',{style:{fontSize:13,fontWeight:700,color:'#8B5CF6'}}),'AI Audit Summary'
+                h('span',{style:{fontSize:13,fontWeight:700,color:'#8B5CF6'}},'AI Audit Summary')
               ),
               h('div',{style:{fontSize:13,color:C.text,lineHeight:1.8,fontStyle:'italic'}},'"'+aiSummary+'"')
             ):null,
             h('div',{style:{fontSize:12,color:C.muted,marginBottom:4}},visible.length+' finding'+(visible.length>1?'s':'')+' · '+approved.length+' invoice'+(approved.length>1?'s':'')+' audited'),
             visible.map(function(finding){
               var sev=SEV[finding.severity]||{c:C.muted};
-              var narrative=aiNarratives[finding.title]||null;
               return h('div',{key:finding.id,className:'card',style:{borderLeft:'3px solid '+(finding.isAI?'#8B5CF6':sev.c),padding:'0',overflow:'hidden'}},
                 // ── Header strip ──
                 h('div',{style:{padding:'14px 18px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)'}},
@@ -1195,30 +1106,23 @@ function AuditFindings(props){
                     ),
                     h('span',{style:{fontSize:11,color:C.faint,flexShrink:0,marginLeft:8}},finding.file)
                   ),
-                  h('div',{style:{fontSize:14,fontWeight:700,color:C.text}},finding.title)
+                  h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+                    h('div',{style:{fontSize:14,fontWeight:700,color:C.text}},finding.title),
+                    finding.vendorName&&finding.vendorName!=='Unknown'?h('span',{style:{fontSize:11,color:C.faint,fontWeight:400}},'— '+finding.vendorName):null
+                  )
                 ),
                 // ── Body ──
                 h('div',{style:{padding:'12px 18px',display:'flex',flexDirection:'column',gap:10}},
                   // Technical description (existing)
                   h('div',{style:{fontSize:12,color:C.muted,lineHeight:1.7}},finding.desc),
-                  // ── AI Plain-English Narrative ──────────────────
-                  narrative?h('div',{style:{background:'rgba(139,92,246,0.06)',border:'1px solid rgba(139,92,246,0.2)',borderRadius:8,padding:'12px 14px',display:'flex',flexDirection:'column',gap:8}},
-                    h('div',{style:{fontSize:10,color:'#8B5CF6',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:2}},'🧠 AI Explanation'),
-                    h('div',{style:{fontSize:13,color:C.text,lineHeight:1.85}},narrative.plainEnglish),
-                    narrative.riskImpact?h('div',{style:{display:'flex',gap:8,alignItems:'flex-start',paddingTop:8,borderTop:'1px solid rgba(139,92,246,0.15)'}},
-                      h('span',{style:{fontSize:16,flexShrink:0}},'⚠️'),
-                      h('div',null,
-                        h('div',{style:{fontSize:10,color:C.amber,fontWeight:700,marginBottom:2}},'RISK IF IGNORED'),
-                        h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7}},narrative.riskImpact)
-                      )
-                    ):null,
-                    narrative.immediateStep?h('div',{style:{display:'flex',gap:8,alignItems:'flex-start',paddingTop:8,borderTop:'1px solid rgba(139,92,246,0.15)'}},
-                      h('span',{style:{fontSize:16,flexShrink:0}},'✅'),
-                      h('div',null,
-                        h('div',{style:{fontSize:10,color:C.green,fontWeight:700,marginBottom:2}},'DO THIS TODAY'),
-                        h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7}},narrative.immediateStep)
-                      )
-                    ):null
+                  finding.action?h('div',{style:{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.2)',borderRadius:8,padding:'10px 14px',marginTop:2}},
+                    h('div',{style:{fontSize:10,color:'#10B981',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:4}},'Recommended Action'),
+                    h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.75)',lineHeight:1.7}},finding.action)
+                  ):null,
+                  // ── AI Plain-English Explanation ──────────────
+                  (finding.plainEnglish&&finding.plainEnglish.length>2)?h('div',{style:{background:'rgba(139,92,246,0.06)',border:'1px solid rgba(139,92,246,0.2)',borderRadius:8,padding:'12px 14px'}},
+                    h('div',{style:{fontSize:10,color:'#8B5CF6',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'AI Explanation'),
+                    h('div',{style:{fontSize:13,color:C.text,lineHeight:1.85}},finding.plainEnglish)
                   ):null,
                   // Recommended action box
                   finding.action?h('div',{style:{background:C.amber+'08',border:'1px solid '+C.amber+'25',borderRadius:6,padding:'10px 14px',fontSize:11,color:'rgba(255,255,255,0.75)',lineHeight:1.6}},
