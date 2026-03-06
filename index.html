@@ -2321,8 +2321,8 @@ function Dashboard(props){
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}},
       [
         {l:'Total Billed',v:approved.length?fmt(totalBilled):'—',sub:approved.length?approved.length+' invoices approved':'No invoices yet',c:C.text},
-        {l:'Correct Amount',v:(approved.length&&totalOvercharge>0)?fmt(correctAmount):'—',sub:totalOvercharge>0?'After removing overcharges':aiResults?'No overcharges found':'Run AI Audit to analyse',c:C.green},
-        {l:'Total Overcharge',v:totalOvercharge>0?fmt(totalOvercharge):(aiResults?'—':'?'),sub:totalOvercharge>0?findings.length+' findings':aiResults?'Clean audit':'AI audit pending',c:totalOvercharge>0?C.red:aiResults?C.green:C.faint},
+        {l:'Correct Amount',v:approved.length?fmt(correctAmount):'—',sub:totalOvercharge>0?'After removing overcharges':aiResults?'No overcharges found':'Run AI Audit to analyse',c:C.green},
+        {l:'Total Overcharge',v:approved.length?(aiResults||findings.length>0?fmt(totalOvercharge):'?'):'—',sub:totalOvercharge>0?findings.length+' findings':aiResults?'Clean audit':'AI audit pending',c:totalOvercharge>0?C.red:aiResults?C.green:C.faint},
         {l:'Vendors',v:vendorMaster.length||'—',sub:vendorMaster.length?Object.keys(cats).length+' categories':'No vendors yet',c:'#8B5CF6'},
       ].map(function(k,i){
         return h('div',{key:k.l,className:'card fu',style:{animationDelay:i*50+'ms',padding:'16px 18px',borderLeft:k.l==='Total Overcharge'&&totalOvercharge>0?'3px solid '+C.red:k.l==='Correct Amount'&&totalOvercharge>0?'3px solid '+C.green:'none'}},
