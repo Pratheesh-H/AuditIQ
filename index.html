@@ -1004,37 +1004,51 @@ function AuditFindings(props){
       });
       var vmData=vendorMaster.map(function(v){return {name:v.name,gstin:v.gstin,ifsc:v.ifsc};});
 
-      var prompt='You are a senior Indian GST and procurement auditor. Analyse the following invoice data carefully and return ONLY a valid JSON object — no markdown, no explanation.\n\n'
+      var prompt='You are a senior Indian GST and procurement auditor. Study the data below and return ONLY a valid JSON object — no markdown, no extra text.\n\n'
         +'INVOICES:\n'+JSON.stringify(invoiceData,null,1)+'\n\n'
-        +(contractData.length?'CONTRACTS/RATE CARDS:\n'+JSON.stringify(contractData.concat(rateData),null,1)+'\n\n':'')
+        +(contractData.length?'CONTRACTS / RATE CARDS:\n'+JSON.stringify(contractData.concat(rateData),null,1)+'\n\n':'')
         +(vmData.length?'VENDOR MASTER:\n'+JSON.stringify(vmData,null,1)+'\n\n':'')
-        +'AUDIT RULES TO CHECK:\n'
-        +'1. GST CALCULATION: Verify Invoice Total = Taxable Amount + CGST amount + SGST amount + IGST amount (within Rs.1 tolerance). Parse amounts carefully — fields like "9% — Rs.40500.00" mean the tax amount is Rs.40500.\n'
-        +'2. GSTIN FORMAT: Must match pattern: 2 digits + 5 uppercase letters + 4 digits + 1 letter + 1 alphanumeric + Z + 1 alphanumeric.\n'
-        +'3. BANK MISMATCH: If vendor IFSC in invoice differs from vendor master IFSC for the same vendor — flag as CRITICAL fraud risk.\n'
-        +'4. RATE OVERBILLING: If invoice rate per unit exceeds contracted rate or rate card rate for the same vendor by more than 5%.\n'
-        +'5. DUPLICATE INVOICE: Same invoice number appearing on multiple files.\n'
-        +'6. MISSING CRITICAL FIELDS: Flag if Invoice Total, Vendor Name, or Vendor GSTIN is missing.\n'
-        +'7. ANY OTHER ANOMALY you notice as an experienced auditor.\n\n'
-        +'Return ONLY this JSON (no markdown):\n'
-        +'{\n'
-        +'  "overallSummary": "3-5 sentence plain English overview for a finance manager. Mention total invoices checked, key issues found, total money at risk, and overall audit health.",\n'
-        +'  "findings": [\n'
-        +'    {\n'
-        +'      "type": "CALC_ERROR|COMPLIANCE|FRAUD|PRICING|DUPLICATE|GST_RATE|MISSING_FIELD|OTHER",\n'
-        +'      "severity": "CRITICAL|HIGH|MEDIUM|LOW",\n'
-        +'      "title": "Short title of finding",\n'
-        +'      "vendorName": "vendor name or Unknown",\n'
-        +'      "invoiceFile": "filename",\n'
-        +'      "overchargeAmt": 0,\n'
-        +'      "desc": "Clear factual description of what is wrong and exact amounts involved",\n'
-        +'      "plainEnglish": "2-3 sentence simple explanation for non-accountants",\n'
-        +'      "action": "Specific action the accounts team should take TODAY"\n'
-        +'    }\n'
-        +'  ],\n'
-        +'  "findingNarratives": {}\n'
-        +'}\n'
-        +'If no issues found, return empty findings array. Be accurate — do NOT flag issues that do not exist.';
+        +'AUDIT RULES — follow every step exactly:\n\n'
+        +'RULE 1 — GST CALCULATION:\n'
+        +'  Step 1: Read Taxable Amount as a plain number (strip currency symbols, commas).\n'
+        +'  Step 2: Read each tax amount. A field like "9% — Rs.40,500" means the TAX AMOUNT is 40500, NOT the rate.\n'
+        +'  Step 3: Expected Total = Taxable Amount + CGST amount + SGST amount + IGST amount.\n'
+        +'  Step 4: Compare with Invoice Total. Flag CALC_ERROR only if |difference| > Rs.2. State both figures in desc.\n\n'
+        +'RULE 2 — GSTIN FORMAT:\n'
+        +'  Valid pattern: 2 digits + 5 uppercase letters + 4 digits + 1 letter + 1 alphanumeric + Z + 1 alphanumeric (15 chars total).\n'
+        +'  Flag GSTIN_FORMAT only if GSTIN is present but malformed, or completely missing from the invoice.\n\n'
+        +'RULE 3 — BANK / IFSC MISMATCH:\n'
+        +'  Compare IFSC in invoice against vendor master IFSC for the same vendor name.\n'
+        +'  Flag CRITICAL BANK_MISMATCH only if both values are present and they differ.\n\n'
+        +'RULE 4 — RATE OVERBILLING (most important — calculate carefully):\n'
+        +'  Step 1: Extract invoice_rate = "Rate per Unit" field from invoice (plain number, strip Rs/commas).\n'
+        +'  Step 2: Extract contracted_rate = matching rate from contract/rate card for the same vendor + item (plain number).\n'
+        +'  Step 3: Only proceed if BOTH values are clearly present. Do NOT guess or assume rates.\n'
+        +'  Step 4: Check if invoice_rate > contracted_rate * 1.05 (i.e. more than 5% above contracted).\n'
+        +'  Step 5: overcharge_per_unit = invoice_rate - contracted_rate (must be > 0).\n'
+        +'  Step 6: Extract quantity from invoice (plain number).\n'
+        +'  Step 7: overchargeAmt = overcharge_per_unit * quantity. Show working in desc field.\n'
+        +'  Step 8: DOUBLE-CHECK: overchargeAmt must be less than Invoice Total. If it equals or exceeds Invoice Total, you have misread a field — recheck and correct.\n'
+        +'  Example: invoice_rate=15500, contracted_rate=12500, qty=400 → overcharge/unit=3000, overchargeAmt=1200000. NOT 1600000.\n'
+        +'  Flag type RATE_OVERBILLING, severity HIGH.\n\n'
+        +'RULE 5 — DUPLICATE INVOICE:\n'
+        +'  Flag DUPLICATE only if the exact same Invoice Number string appears in more than one file.\n\n'
+        +'RULE 6 — MISSING CRITICAL FIELDS:\n'
+        +'  Flag MISSING_FIELD only if Invoice Total OR Vendor Name is completely absent from the invoice.\n\n'
+        +'RULE 7 — OTHER ANOMALIES:\n'
+        +'  Flag genuine anomalies only. Do not speculate. Every finding must cite specific field values from the data.\n\n'
+        +'CALCULATION DISCIPLINE:\n'
+        +'  - Strip all commas and currency symbols before arithmetic.\n'
+        +'  - Show your arithmetic in the desc field: e.g. "overcharge/unit = 15500-12500 = 3000; qty = 400; overchargeAmt = 3000*400 = 1200000".\n'
+        +'  - Never round up overchargeAmt. Use exact multiplication.\n'
+        +'  - If you are unsure of a number, do not flag the finding.\n\n'
+        +'Return ONLY this JSON (no markdown, no trailing commas):\n'
+        +'{"overallSummary":"3-5 sentence plain English overview for a finance manager — total invoices, key issues, total money at risk, overall health.",'
+        +'"findings":[{"type":"CALC_ERROR or COMPLIANCE or FRAUD or PRICING or RATE_OVERBILLING or DUPLICATE or GST_RATE or GSTIN_FORMAT or BANK_MISMATCH or MISSING_FIELD or OTHER",'
+        +'"severity":"CRITICAL or HIGH or MEDIUM or LOW","title":"Short title","vendorName":"vendor name","invoiceFile":"filename",'
+        +'"overchargeAmt":0,"desc":"Factual description showing exact field values and arithmetic",'
+        +'"plainEnglish":"2-3 sentence explanation for non-accountants","action":"Specific step the accounts team should take today"}]}\n'
+        +'If no issues found return empty findings array. Never invent findings. overchargeAmt must be a plain number (no symbols). Do not flag rounding differences under Rs.2.';
 
       var resp=await fetch('/api/groq',{
         method:'POST',headers:{'Content-Type':'application/json'},
@@ -1075,14 +1089,14 @@ function AuditFindings(props){
     setAiRunningV(false);
   }
   var SEV={CRITICAL:{c:C.red,o:0},HIGH:{c:C.amber,o:1},MEDIUM:{c:C.blue,o:2},LOW:{c:C.green,o:3}};
-  var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing',NAME_MISMATCH:'Name Match'};
+  var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',RATE_OVERBILLING:'Rate Overbilling',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',GSTIN_FORMAT:'GSTIN Format',BANK_MISMATCH:'Bank Mismatch',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing Field',NAME_MISMATCH:'Name Mismatch',OTHER:'Other'};
   var sorted=allFindings.slice().sort(function(a,b){return (SEV[a.severity]?SEV[a.severity].o:9)-(SEV[b.severity]?SEV[b.severity].o:9);});
   var counts={ALL:allFindings.length};
   Object.keys(TYPE_LABELS).forEach(function(k){counts[k]=0;});
   allFindings.forEach(function(f){if(counts[f.type]!==undefined)counts[f.type]++;});
   var totalOvercharge=allFindings.reduce(function(s,f){return s+(f.overchargeAmt||0);},0);
   var visible=filter==='ALL'?sorted:sorted.filter(function(f){return f.type===filter;});
-  var filterKeys=['ALL','FRAUD','CALC_ERROR','GST_RATE','PRICING','SURCHARGE','DUPLICATE','COMPLIANCE','CONTRACT_VIOLATION','PERIOD_VIOLATION','NAME_MISMATCH','MISSING_FIELD'];
+  var filterKeys=['ALL','FRAUD','RATE_OVERBILLING','CALC_ERROR','GST_RATE','GSTIN_FORMAT','BANK_MISMATCH','PRICING','SURCHARGE','DUPLICATE','COMPLIANCE','MISSING_FIELD','OTHER'];
 
   return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
     totalOvercharge>0&&approved.length>0?h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}},
