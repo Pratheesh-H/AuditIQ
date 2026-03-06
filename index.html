@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>AuditIQ</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -57,42 +57,6 @@ body.light [style*="color:#e2e8f0"]{color:#1E293B!important}
 .tb.on-g{background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.4);color:#10B981;font-weight:600}
 input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:rgba(255,255,255,0.1);outline:none;cursor:pointer;padding:0;border:none}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#F59E0B;cursor:pointer}
-
-/* ── VERSION B: Colourful Dashboard Overrides ─────────────── */
-body{
-  background-image:
-    radial-gradient(ellipse 65% 45% at 5% 10%,  rgba(59,130,246,0.10) 0%,transparent 65%),
-    radial-gradient(ellipse 55% 40% at 90% 80%,  rgba(139,92,246,0.09) 0%,transparent 65%),
-    radial-gradient(ellipse 45% 35% at 45% 100%, rgba(16,185,129,0.06) 0%,transparent 65%),
-    radial-gradient(ellipse 40% 30% at 85% 5%,   rgba(245,158,11,0.05) 0%,transparent 65%);
-}
-.vb-kpi-blue  {background:linear-gradient(145deg,#0F2456 0%,#060D20 100%)!important;border:1px solid rgba(59,130,246,0.4)!important;position:relative;overflow:hidden}
-.vb-kpi-red   {background:linear-gradient(145deg,#3A0A0A 0%,#160303 100%)!important;border:1px solid rgba(239,68,68,0.4)!important;position:relative;overflow:hidden}
-.vb-kpi-green {background:linear-gradient(145deg,#062E1A 0%,#03120A 100%)!important;border:1px solid rgba(16,185,129,0.4)!important;position:relative;overflow:hidden}
-.vb-kpi-amber {background:linear-gradient(145deg,#2D1900 0%,#130B00 100%)!important;border:1px solid rgba(245,158,11,0.4)!important;position:relative;overflow:hidden}
-.vb-kpi-blue::after  {content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#3B82F6,#60A5FA,transparent)}
-.vb-kpi-red::after   {content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#EF4444,#F87171,transparent)}
-.vb-kpi-green::after {content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#10B981,#34D399,transparent)}
-.vb-kpi-amber::after {content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#F59E0B,#FCD34D,transparent)}
-.vb-card-blue   {border-color:rgba(59,130,246,0.28)!important;background:linear-gradient(160deg,rgba(59,130,246,0.07) 0%,transparent 60%)!important}
-.vb-card-red    {border-color:rgba(239,68,68,0.28)!important;  background:linear-gradient(160deg,rgba(239,68,68,0.07) 0%,transparent 60%)!important}
-.vb-card-amber  {border-color:rgba(245,158,11,0.28)!important; background:linear-gradient(160deg,rgba(245,158,11,0.07) 0%,transparent 60%)!important}
-.vb-card-violet {border-color:rgba(139,92,246,0.28)!important; background:linear-gradient(160deg,rgba(139,92,246,0.07) 0%,transparent 60%)!important}
-.vb-card-green  {border-color:rgba(16,185,129,0.28)!important; background:linear-gradient(160deg,rgba(16,185,129,0.07) 0%,transparent 60%)!important}
-.vb-card-mixed  {border-color:rgba(139,92,246,0.22)!important; background:linear-gradient(160deg,rgba(139,92,246,0.06) 0%,rgba(239,68,68,0.04) 100%)!important}
-.vb-card-blue::before,.vb-card-red::before,.vb-card-amber::before,.vb-card-violet::before,.vb-card-green::before,.vb-card-mixed::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:14px 14px 0 0}
-.vb-card-blue::before   {background:linear-gradient(90deg,#3B82F6,transparent)}
-.vb-card-red::before    {background:linear-gradient(90deg,#EF4444,transparent)}
-.vb-card-amber::before  {background:linear-gradient(90deg,#F59E0B,transparent)}
-.vb-card-violet::before {background:linear-gradient(90deg,#8B5CF6,transparent)}
-.vb-card-green::before  {background:linear-gradient(90deg,#10B981,transparent)}
-.vb-card-mixed::before  {background:linear-gradient(90deg,#8B5CF6,#EF4444)}
-.vb-glow{position:absolute;border-radius:50%;filter:blur(55px);pointer-events:none;z-index:0;opacity:1}
-.vb-pipe-box-blue   {background:rgba(59,130,246,0.12)!important;border:1px solid rgba(59,130,246,0.35)!important;box-shadow:0 0 20px rgba(59,130,246,0.1)!important}
-.vb-pipe-box-amber  {background:rgba(245,158,11,0.12)!important; border:1px solid rgba(245,158,11,0.35)!important; box-shadow:0 0 20px rgba(245,158,11,0.1)!important}
-.vb-pipe-box-red    {background:rgba(239,68,68,0.12)!important;  border:1px solid rgba(239,68,68,0.35)!important;  box-shadow:0 0 20px rgba(239,68,68,0.1)!important}
-.vb-pipe-box-green  {background:rgba(16,185,129,0.12)!important;  border:1px solid rgba(16,185,129,0.35)!important;  box-shadow:0 0 20px rgba(16,185,129,0.12)!important}
-.vb-btrack-grad{height:10px!important;border-radius:5px!important}
 </style>
 </head>
 <body>
@@ -652,7 +616,6 @@ function DocumentHub(props){
         uploaded:new Date().toLocaleTimeString(),extraction:null,_ref:f};
     });
     setUploadedFiles(function(p){return nfs.concat(p);});
-    props.setAiResults&&props.setAiResults(null); // reset AI on new upload
     // Sequential upload — one at a time with delay to avoid Gemini 429s
     (async function(){
     for(var _i=0;_i<nfs.length;_i++){var nf=nfs[_i];
@@ -864,8 +827,80 @@ function extractTaxAmt(v){
 // ══════════════════════════════════════════════════════════════════
 //  AUDIT FINDINGS
 // ══════════════════════════════════════════════════════════════════
-// runGroqOversight removed — replaced by handleRunAI
-
+async function runGroqOversight(invoices,contracts,rateCards,vmData,ruleFindings){
+  var AUDIT_FIELDS=['Vendor Name','Vendor GSTIN','Invoice Number','Invoice Total',
+    'Taxable Amount','CGST','SGST','IGST','Rate per Unit','Quantity',
+    'HSN / SAC Code','IFSC Code','Invoice Date','Contracted Rate','Rate Card Reference'];
+  function af(ex){
+    if(!ex||!ex.fields)return{};
+    var o={};
+    ex.fields.filter(function(x){return !x.isMeta&&x.conf>0&&AUDIT_FIELDS.indexOf(x.field)!==-1;})
+      .forEach(function(x){o[x.field]=x.value;});
+    return o;
+  }
+  // Only send key fields to reduce tokens ~60%
+  // Build a plain-English audit narrative using AI
+  var rulesSummary=ruleFindings.map(function(f){
+    return {type:f.type,title:f.title,vendor:f.vendorName,amount:f.overchargeAmt,desc:f.desc};
+  });
+  var prompt='You are a senior Indian GST and procurement auditor writing a board-level audit report.\n'
+    +'I have already detected the following rule-based findings:\n'+JSON.stringify(rulesSummary)+'\n\n'
+    +'Invoice data:\n'+JSON.stringify(invoices.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
+    +'\n\nContracts/Rate cards:\n'+JSON.stringify(contracts.map(function(f){return{file:f.name,fields:af(f.extraction)};}))
+    +'\n\nVendor master:\n'+JSON.stringify(vmData.map(function(v){return{name:v.name,gstin:v.gstin};}))
+    +'\n\nReturn ONLY a valid JSON object (no markdown) with this exact structure:\n'
+    +'{\n'
+    +'  "overallSummary": "3-5 sentence plain English overview of the entire audit. Mention total risk, key vendors flagged, and overall health of the invoice set. Write as if explaining to a finance manager who is not a GST expert.",\n'
+    +'  "findingNarratives": [\n'
+    +'    {\n'
+    +'      "findingTitle": "exact title from rule findings above",\n'
+    +'      "plainEnglish": "2-4 sentence explanation in simple language. Explain what went wrong, why it matters, what money is at risk, and what the vendor may have done incorrectly. Avoid jargon.",\n'
+    +'      "riskImpact": "One sentence on financial or compliance risk if not acted upon.",\n'
+    +'      "immediateStep": "One clear sentence on what the accounts team should do TODAY."\n'
+    +'    }\n'
+    +'  ],\n'
+    +'  "additionalFindings": [\n'
+    +'    {"type":"COMPLIANCE","severity":"HIGH","title":"...","vendorName":"...","invoiceFile":"...","overchargeAmt":0,"desc":"...","action":"...","plainEnglish":"..."}\n'
+    +'  ]\n'
+    +'}\n'
+    +'additionalFindings = any NEW issues you spot that the rules missed (fuzzy name match, missing fields, contract violations). Empty array if none.';
+  var resp=await fetch('/api/groq',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'user',content:prompt}],max_tokens:2048,temperature:0.1})});
+  if(!resp.ok){var et=await resp.text().catch(function(){return'';});throw new Error('Groq '+resp.status+': '+et.slice(0,200));}
+  var data=await resp.json();
+  var raw='';try{raw=data.choices[0].message.content||'';}catch(e){raw='';}
+  raw=raw.trim().replace(/^```json\s*/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+  var parsed;
+  try{parsed=JSON.parse(raw);}
+  catch(e){
+    var mo=raw.match(/\{[\s\S]*\}/);
+    if(mo){try{parsed=JSON.parse(mo[0]);}catch(e2){parsed=null;}}
+  }
+  if(!parsed||typeof parsed!=='object'){return{summary:'',narratives:{},extras:[]};}
+  // Build narratives lookup keyed by finding title
+  var narratives={};
+  (parsed.findingNarratives||[]).forEach(function(n){
+    if(n&&n.findingTitle){
+      narratives[n.findingTitle]={
+        plainEnglish:String(n.plainEnglish||''),
+        riskImpact:String(n.riskImpact||''),
+        immediateStep:String(n.immediateStep||'')
+      };
+    }
+  });
+  // Extra findings AI spotted beyond rule-engine
+  var extras=(parsed.additionalFindings||[]).map(function(it,i){return{
+    id:'ai-'+Date.now()+'-'+i,
+    type:String(it.type||'COMPLIANCE').toUpperCase(),
+    severity:['CRITICAL','HIGH','MEDIUM','LOW'].includes(String(it.severity||'').toUpperCase())?String(it.severity).toUpperCase():'MEDIUM',
+    title:String(it.title||'AI Finding'),vendorName:String(it.vendorName||'Unknown'),
+    overchargeAmt:parseFloat(it.overchargeAmt)||0,
+    desc:String(it.desc||''),plainEnglish:String(it.plainEnglish||''),
+    action:String(it.action||''),file:String(it.invoiceFile||''),ref:'AI Analysis',isAI:true};});
+  return{summary:String(parsed.overallSummary||''),narratives:narratives,extras:extras};
+}
 
 function AuditFindings(props){
   var uploadedFiles=props.uploadedFiles,vendorMaster=props.vendorMaster,config=props.config;
@@ -973,16 +1008,33 @@ function AuditFindings(props){
         +'INVOICES:\n'+JSON.stringify(invoiceData,null,1)+'\n\n'
         +(contractData.length?'CONTRACTS/RATE CARDS:\n'+JSON.stringify(contractData.concat(rateData),null,1)+'\n\n':'')
         +(vmData.length?'VENDOR MASTER:\n'+JSON.stringify(vmData,null,1)+'\n\n':'')
-        +'AUDIT RULES:\n'
-        +'1. GST CALC: Parse amounts carefully. e.g. "9% Rs.40500" means amount=40500. Verify Total = Taxable + all tax amounts. Tolerance Rs.2. Only flag clear arithmetic errors.\n'
-        +'2. GSTIN FORMAT: 15 chars = 2digits+5letters+4digits+1letter+1char+Z+1char. Flag as GSTIN_FORMAT if invalid or missing.\n'
-        +'3. BANK MISMATCH: Invoice IFSC differs from vendor master IFSC for same vendor = CRITICAL BANK_MISMATCH.\n'
-        +'4. RATE OVERBILLING: Only flag if you have explicit rate card data showing a lower agreed rate.\n'
-        +'5. MISSING FIELD: Only flag if Invoice Total or Vendor Name is completely absent.\n'
-        +'6. Be conservative. Do not create speculative findings without clear evidence.\n\n'
-        +'Return ONLY valid JSON, no markdown:\n'
-        +'{"overallSummary":"3-5 sentence overview for finance manager","findings":[{"type":"CALC_ERROR or COMPLIANCE or FRAUD or PRICING or DUPLICATE or GST_RATE or MISSING_FIELD or GSTIN_FORMAT or RATE_OVERBILLING or BANK_MISMATCH or OTHER","severity":"CRITICAL or HIGH or MEDIUM or LOW","title":"Short title","vendorName":"vendor name","invoiceFile":"filename","overchargeAmt":0,"desc":"Factual description with exact amounts","plainEnglish":"2-3 sentence explanation for non-accountants","action":"Specific step to take today"}]}\n'
-        +'Rules: empty findings array if no issues. Never invent findings. overchargeAmt must be a number. Do not flag rounding under Rs.2.';
+        +'AUDIT RULES TO CHECK:\n'
+        +'1. GST CALCULATION: Verify Invoice Total = Taxable Amount + CGST amount + SGST amount + IGST amount (within Rs.1 tolerance). Parse amounts carefully — fields like "9% — Rs.40500.00" mean the tax amount is Rs.40500.\n'
+        +'2. GSTIN FORMAT: Must match pattern: 2 digits + 5 uppercase letters + 4 digits + 1 letter + 1 alphanumeric + Z + 1 alphanumeric.\n'
+        +'3. BANK MISMATCH: If vendor IFSC in invoice differs from vendor master IFSC for the same vendor — flag as CRITICAL fraud risk.\n'
+        +'4. RATE OVERBILLING: If invoice rate per unit exceeds contracted rate or rate card rate for the same vendor by more than 5%.\n'
+        +'5. DUPLICATE INVOICE: Same invoice number appearing on multiple files.\n'
+        +'6. MISSING CRITICAL FIELDS: Flag if Invoice Total, Vendor Name, or Vendor GSTIN is missing.\n'
+        +'7. ANY OTHER ANOMALY you notice as an experienced auditor.\n\n'
+        +'Return ONLY this JSON (no markdown):\n'
+        +'{\n'
+        +'  "overallSummary": "3-5 sentence plain English overview for a finance manager. Mention total invoices checked, key issues found, total money at risk, and overall audit health.",\n'
+        +'  "findings": [\n'
+        +'    {\n'
+        +'      "type": "CALC_ERROR|COMPLIANCE|FRAUD|PRICING|DUPLICATE|GST_RATE|MISSING_FIELD|OTHER",\n'
+        +'      "severity": "CRITICAL|HIGH|MEDIUM|LOW",\n'
+        +'      "title": "Short title of finding",\n'
+        +'      "vendorName": "vendor name or Unknown",\n'
+        +'      "invoiceFile": "filename",\n'
+        +'      "overchargeAmt": 0,\n'
+        +'      "desc": "Clear factual description of what is wrong and exact amounts involved",\n'
+        +'      "plainEnglish": "2-3 sentence simple explanation for non-accountants",\n'
+        +'      "action": "Specific action the accounts team should take TODAY"\n'
+        +'    }\n'
+        +'  ],\n'
+        +'  "findingNarratives": {}\n'
+        +'}\n'
+        +'If no issues found, return empty findings array. Be accurate — do NOT flag issues that do not exist.';
 
       var resp=await fetch('/api/groq',{
         method:'POST',headers:{'Content-Type':'application/json'},
@@ -1023,21 +1075,21 @@ function AuditFindings(props){
     setAiRunningV(false);
   }
   var SEV={CRITICAL:{c:C.red,o:0},HIGH:{c:C.amber,o:1},MEDIUM:{c:C.blue,o:2},LOW:{c:C.green,o:3}};
-  var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing Field',NAME_MISMATCH:'Name Mismatch',GSTIN_FORMAT:'GSTIN Format',RATE_OVERBILLING:'Rate Overbilling',BANK_MISMATCH:'Bank Mismatch',OTHER:'Other'};
+  var TYPE_LABELS={CALC_ERROR:'Calc Errors',COMPLIANCE:'Compliance',FRAUD:'Fraud',PRICING:'Pricing',DUPLICATE:'Duplicates',GST_RATE:'GST Rate',SURCHARGE:'Surcharges',CONTRACT_VIOLATION:'Contract',PERIOD_VIOLATION:'Period',MISSING_FIELD:'Missing',NAME_MISMATCH:'Name Match'};
   var sorted=allFindings.slice().sort(function(a,b){return (SEV[a.severity]?SEV[a.severity].o:9)-(SEV[b.severity]?SEV[b.severity].o:9);});
   var counts={ALL:allFindings.length};
   Object.keys(TYPE_LABELS).forEach(function(k){counts[k]=0;});
   allFindings.forEach(function(f){if(counts[f.type]!==undefined)counts[f.type]++;});
   var totalOvercharge=allFindings.reduce(function(s,f){return s+(f.overchargeAmt||0);},0);
   var visible=filter==='ALL'?sorted:sorted.filter(function(f){return f.type===filter;});
-  var filterKeys=['ALL','FRAUD','CALC_ERROR','GST_RATE','PRICING','SURCHARGE','DUPLICATE','COMPLIANCE','GSTIN_FORMAT','RATE_OVERBILLING','BANK_MISMATCH','MISSING_FIELD','OTHER'];
+  var filterKeys=['ALL','FRAUD','CALC_ERROR','GST_RATE','PRICING','SURCHARGE','DUPLICATE','COMPLIANCE','CONTRACT_VIOLATION','PERIOD_VIOLATION','NAME_MISMATCH','MISSING_FIELD'];
 
   return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
     totalOvercharge>0&&approved.length>0?h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}},
       h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.red}},
         h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Total Overcharge Detected'),
         h('div',{style:{fontSize:22,fontWeight:800,color:C.red,fontFamily:"'DM Mono',monospace"}},'\u20B9'+totalOvercharge.toLocaleString('en-IN',{minimumFractionDigits:2})),
-        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},allFindings.length+' finding'+(allFindings.length!==1?'s':'')+' across '+approved.length+' invoices')
+        h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},findings.length+' finding'+(findings.length!==1?'s':'')+' across '+approved.length+' invoices')
       ),
       h('div',{className:'card',style:{padding:'14px 18px',borderLeft:'3px solid '+C.amber}},
         h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'Critical / High Findings'),
@@ -1079,21 +1131,22 @@ function AuditFindings(props){
       : visible.length===0
         ? h('div',{className:'card',style:{textAlign:'center',padding:'44px 20px',color:C.green}},
             h('div',{style:{fontSize:36,marginBottom:12}},'✅'),
-            h('div',{style:{fontSize:14,fontWeight:700,marginBottom:6}},filter==='ALL'?(aiDoneV?'Clean audit — no issues found':'No rule-based findings'):'No findings in this category'),
-            h('div',{style:{fontSize:12,color:C.muted}},approved.length+' invoice'+(approved.length>1?'s':'')+' passed all checks.'+(filter==='ALL'&&!aiDoneV?' Run AI Audit for deeper analysis.':'')+'')
+            h('div',{style:{fontSize:14,fontWeight:700,marginBottom:6}},'No findings in this category'),
+            h('div',{style:{fontSize:12,color:C.muted}},approved.length+' invoice'+(approved.length>1?'s':'')+' passed all checks.')
           )
         : h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
             // ── AI Overall Summary Banner ──────────────────────────
             aiSummary?h('div',{style:{background:'linear-gradient(135deg,rgba(139,92,246,0.12),rgba(109,40,217,0.06))',border:'1px solid rgba(139,92,246,0.3)',borderRadius:12,padding:'16px 20px',marginBottom:4}},
               h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10}},
                 h('span',{style:{fontSize:14}},'🧠'),
-                h('span',{style:{fontSize:13,fontWeight:700,color:'#8B5CF6'}},'AI Audit Summary')
+                h('span',{style:{fontSize:13,fontWeight:700,color:'#8B5CF6'}}),'AI Audit Summary'
               ),
               h('div',{style:{fontSize:13,color:C.text,lineHeight:1.8,fontStyle:'italic'}},'"'+aiSummary+'"')
             ):null,
             h('div',{style:{fontSize:12,color:C.muted,marginBottom:4}},visible.length+' finding'+(visible.length>1?'s':'')+' · '+approved.length+' invoice'+(approved.length>1?'s':'')+' audited'),
             visible.map(function(finding){
               var sev=SEV[finding.severity]||{c:C.muted};
+              var narrative=aiNarratives[finding.title]||null;
               return h('div',{key:finding.id,className:'card',style:{borderLeft:'3px solid '+(finding.isAI?'#8B5CF6':sev.c),padding:'0',overflow:'hidden'}},
                 // ── Header strip ──
                 h('div',{style:{padding:'14px 18px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)'}},
@@ -1106,23 +1159,30 @@ function AuditFindings(props){
                     ),
                     h('span',{style:{fontSize:11,color:C.faint,flexShrink:0,marginLeft:8}},finding.file)
                   ),
-                  h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
-                    h('div',{style:{fontSize:14,fontWeight:700,color:C.text}},finding.title),
-                    finding.vendorName&&finding.vendorName!=='Unknown'?h('span',{style:{fontSize:11,color:C.faint,fontWeight:400}},'— '+finding.vendorName):null
-                  )
+                  h('div',{style:{fontSize:14,fontWeight:700,color:C.text}},finding.title)
                 ),
                 // ── Body ──
                 h('div',{style:{padding:'12px 18px',display:'flex',flexDirection:'column',gap:10}},
                   // Technical description (existing)
                   h('div',{style:{fontSize:12,color:C.muted,lineHeight:1.7}},finding.desc),
-                  finding.action?h('div',{style:{background:'rgba(16,185,129,0.06)',border:'1px solid rgba(16,185,129,0.2)',borderRadius:8,padding:'10px 14px',marginTop:2}},
-                    h('div',{style:{fontSize:10,color:'#10B981',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:4}},'Recommended Action'),
-                    h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.75)',lineHeight:1.7}},finding.action)
-                  ):null,
-                  // ── AI Plain-English Explanation ──────────────
-                  (finding.plainEnglish&&finding.plainEnglish.length>2)?h('div',{style:{background:'rgba(139,92,246,0.06)',border:'1px solid rgba(139,92,246,0.2)',borderRadius:8,padding:'12px 14px'}},
-                    h('div',{style:{fontSize:10,color:'#8B5CF6',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'AI Explanation'),
-                    h('div',{style:{fontSize:13,color:C.text,lineHeight:1.85}},finding.plainEnglish)
+                  // ── AI Plain-English Narrative ──────────────────
+                  narrative?h('div',{style:{background:'rgba(139,92,246,0.06)',border:'1px solid rgba(139,92,246,0.2)',borderRadius:8,padding:'12px 14px',display:'flex',flexDirection:'column',gap:8}},
+                    h('div',{style:{fontSize:10,color:'#8B5CF6',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:2}},'🧠 AI Explanation'),
+                    h('div',{style:{fontSize:13,color:C.text,lineHeight:1.85}},narrative.plainEnglish),
+                    narrative.riskImpact?h('div',{style:{display:'flex',gap:8,alignItems:'flex-start',paddingTop:8,borderTop:'1px solid rgba(139,92,246,0.15)'}},
+                      h('span',{style:{fontSize:16,flexShrink:0}},'⚠️'),
+                      h('div',null,
+                        h('div',{style:{fontSize:10,color:C.amber,fontWeight:700,marginBottom:2}},'RISK IF IGNORED'),
+                        h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7}},narrative.riskImpact)
+                      )
+                    ):null,
+                    narrative.immediateStep?h('div',{style:{display:'flex',gap:8,alignItems:'flex-start',paddingTop:8,borderTop:'1px solid rgba(139,92,246,0.15)'}},
+                      h('span',{style:{fontSize:16,flexShrink:0}},'✅'),
+                      h('div',null,
+                        h('div',{style:{fontSize:10,color:C.green,fontWeight:700,marginBottom:2}},'DO THIS TODAY'),
+                        h('div',{style:{fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.7}},narrative.immediateStep)
+                      )
+                    ):null
                   ):null,
                   // Recommended action box
                   finding.action?h('div',{style:{background:C.amber+'08',border:'1px solid '+C.amber+'25',borderRadius:6,padding:'10px 14px',fontSize:11,color:'rgba(255,255,255,0.75)',lineHeight:1.6}},
@@ -2261,23 +2321,14 @@ function Dashboard(props){
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}},
       [
         {l:'Total Billed',v:approved.length?fmt(totalBilled):'—',sub:approved.length?approved.length+' invoices approved':'No invoices yet',c:C.text},
-        {l:'Correct Amount',v:approved.length?(totalOvercharge>0?fmt(correctAmount):fmt(totalBilled)):'—',sub:totalOvercharge>0?'After removing overcharges':aiResults?'No overcharges — full amount correct':'Run AI Audit to analyse',c:C.green},
-        {l:'Total Overcharge',v:totalOvercharge>0?fmt(totalOvercharge):(aiResults?'₹0.00':'?'),sub:totalOvercharge>0?findings.length+' findings':aiResults?'Clean audit — no issues':'AI audit pending',c:totalOvercharge>0?C.red:aiResults?C.green:C.faint},
+        {l:'Correct Amount',v:(approved.length&&totalOvercharge>0)?fmt(correctAmount):'—',sub:totalOvercharge>0?'After removing overcharges':aiResults?'No overcharges found':'Run AI Audit to analyse',c:C.green},
+        {l:'Total Overcharge',v:totalOvercharge>0?fmt(totalOvercharge):(aiResults?'—':'?'),sub:totalOvercharge>0?findings.length+' findings':aiResults?'Clean audit':'AI audit pending',c:totalOvercharge>0?C.red:aiResults?C.green:C.faint},
         {l:'Vendors',v:vendorMaster.length||'—',sub:vendorMaster.length?Object.keys(cats).length+' categories':'No vendors yet',c:'#8B5CF6'},
       ].map(function(k,i){
-        var vbCls=i===0?'vb-kpi-blue':i===2?'vb-kpi-red':i===1?'vb-kpi-green':'vb-kpi-amber';
-        var glowCol=i===0?'rgba(59,130,246,0.45)':i===2?'rgba(239,68,68,0.45)':i===1?'rgba(16,185,129,0.45)':'rgba(245,158,11,0.45)';
-        // Map semantic colour (k.c) to bright pastel equivalent for dark backgrounds
-        var colMap={'#EF4444':'#FCA5A5','#DC2626':'#FCA5A5','#10B981':'#6EE7B7','#059669':'#6EE7B7','#3B82F6':'#93C5FD','#2563EB':'#93C5FD','#8B5CF6':'#C4B5FD','#7C3AED':'#C4B5FD','#E2E8F0':'rgba(255,255,255,0.9)','#0F172A':'rgba(255,255,255,0.9)'};
-        var cardAccent=i===0?'#93C5FD':i===1?'#6EE7B7':i===2?'#FCA5A5':'#FCD34D';
-        var valCol=colMap[k.c]||cardAccent;
-        var valShadow='0 0 28px '+(glowCol);
-        var lblCol=i===0?'rgba(147,197,253,0.55)':i===2?'rgba(252,165,165,0.55)':i===1?'rgba(110,231,183,0.55)':'rgba(253,211,77,0.55)';
-        return h('div',{key:k.l,className:'card fu '+vbCls,style:{animationDelay:i*50+'ms',padding:'20px 22px',position:'relative',overflow:'hidden'}},
-          h('div',{className:'vb-glow',style:{bottom:'-25px',right:'-20px',width:'110px',height:'110px',background:glowCol}}),
-          h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,color:lblCol,textTransform:'uppercase',letterSpacing:'2.5px',marginBottom:14,fontWeight:600}},k.l),
-          h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:34,lineHeight:1,color:valCol,textShadow:valShadow,marginBottom:8}},k.v),
-          h('div',{style:{position:'relative',zIndex:1,fontSize:12,color:C.faint,fontWeight:300,marginTop:0}},k.sub)
+        return h('div',{key:k.l,className:'card fu',style:{animationDelay:i*50+'ms',padding:'16px 18px',borderLeft:k.l==='Total Overcharge'&&totalOvercharge>0?'3px solid '+C.red:k.l==='Correct Amount'&&totalOvercharge>0?'3px solid '+C.green:'none'}},
+          h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:8}},k.l),
+          h('div',{style:{fontSize:22,fontWeight:800,color:k.c,fontFamily:"'DM Mono',monospace",letterSpacing:-1}},k.v),
+          h('div',{style:{fontSize:11,color:C.faint,marginTop:5}},k.sub)
         );
       })
     ),
@@ -2285,44 +2336,42 @@ function Dashboard(props){
     // ── OVERCHARGE BREAKDOWN ───────────────────────────────────
     totalOvercharge>0?h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
       // By type
-      h('div',{className:'card vb-card-red',style:{position:'relative',overflow:'hidden'}},
-        h('div',{className:'vb-glow',style:{top:'-50px',right:'-40px',width:'160px',height:'160px',background:'rgba(239,68,68,0.12)'}}),
-        h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Overcharge by Type'),
-        h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:16}},'What is causing overbilling'),
-        h('div',{style:{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:14}},
+      h('div',{className:'card'},
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:4}},'Overcharge by Type'),
+        h('div',{style:{fontSize:11,color:C.faint,marginBottom:14}},'What is causing overbilling'),
+        h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
           Object.keys(byType).filter(function(k){return byType[k]>0;}).sort(function(a,b){return byType[b]-byType[a];}).map(function(k){
             var maxT=Math.max.apply(null,Object.values(byType));
             var pct=maxT>0?(byType[k]/maxT)*100:0;
             var col=typeColors[k]||C.muted;
             return h('div',{key:k},
-              h('div',{style:{position:'relative',zIndex:2,display:'flex',justifyContent:'space-between',marginBottom:7}},
-                h('span',{style:{fontSize:13,fontWeight:500,color:C.muted}},typeLabels[k]||k),
-                h('span',{style:{fontSize:13,fontWeight:700,color:col,fontFamily:"'Geist Mono',monospace"}},fmt(byType[k]))
+              h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
+                h('span',{style:{fontSize:11,color:C.muted}},typeLabels[k]||k),
+                h('span',{style:{fontSize:11,fontWeight:700,color:col,fontFamily:"'DM Mono',monospace"}},fmt(byType[k]))
               ),
-              h('div',{style:{height:10,background:'rgba(255,255,255,0.06)',borderRadius:5,overflow:'hidden'}},
-                h('div',{style:{width:pct+'%',height:'100%',background:'linear-gradient(90deg,'+col+','+col+'99)',borderRadius:5}})
+              h('div',{style:{height:5,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden'}},
+                h('div',{style:{width:pct+'%',height:'100%',background:col,borderRadius:3}})
               )
             );
           })
         )
       ),
       // By vendor
-      h('div',{className:'card vb-card-red',style:{position:'relative',overflow:'hidden'}},
-        h('div',{className:'vb-glow',style:{bottom:'-50px',left:'-30px',width:'150px',height:'150px',background:'rgba(239,68,68,0.10)'}}),
-        h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Overcharge by Vendor'),
-        h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:16}},'Top vendors to chase recovery from'),
+      h('div',{className:'card'},
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:4}},'Overcharge by Vendor'),
+        h('div',{style:{fontSize:11,color:C.faint,marginBottom:14}},'Top vendors to chase recovery from'),
         vendorOverList.length===0
           ?h(Empty,{msg:'No vendor overcharges',sub:'All vendors billed correctly'})
-          :h('div',{style:{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:8}},
+          :h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
               vendorOverList.map(function(v){
                 var pct=(v.v/maxVendorOver)*100;
                 return h('div',{key:v.n},
-                  h('div',{style:{position:'relative',zIndex:2,display:'flex',justifyContent:'space-between',marginBottom:7}},
-                    h('span',{style:{fontSize:13,fontWeight:500,color:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:180}},v.n),
-                    h('span',{style:{fontSize:13,fontWeight:700,color:C.red,fontFamily:"'Geist Mono',monospace"}},fmt(v.v))
+                  h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
+                    h('span',{style:{fontSize:11,color:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:160}},v.n),
+                    h('span',{style:{fontSize:11,fontWeight:700,color:C.red,fontFamily:"'DM Mono',monospace"}},fmt(v.v))
                   ),
-                  h('div',{style:{position:'relative',zIndex:2,height:10,background:'rgba(255,255,255,0.06)',borderRadius:5,overflow:'hidden'}},
-                    h('div',{style:{width:pct+'%',height:'100%',background:'linear-gradient(90deg,'+C.red+',#F87171)',borderRadius:5}})
+                  h('div',{style:{height:5,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden'}},
+                    h('div',{style:{width:pct+'%',height:'100%',background:C.red,borderRadius:3}})
                   )
                 );
               })
@@ -2331,9 +2380,9 @@ function Dashboard(props){
     ):null,
 
     // ── PREDICTIVE ANALYTICS ──────────────────────────────────
-    approved.length>=2?h('div',{style:{position:'relative',zIndex:1,display:'flex',flexDirection:'column',gap:4,marginTop:2}},
+    approved.length>=2?h('div',{style:{display:'flex',flexDirection:'column',gap:4,marginTop:2}},
       h('div',{style:{fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:1,marginBottom:6}},'📈 Predictive Analytics'),
-      h('div',{style:{position:'relative',zIndex:1,display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}},
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}},
 
         // ── Chart 1: Spend Trend + Forecast ──────────────────
         (function(){
@@ -2356,16 +2405,7 @@ function Dashboard(props){
             months[key]=(months[key]||0)+tot;
           });
           var keys=Object.keys(months).sort().slice(-6);
-          if(!keys.length)return h('div',{className:'card vb-card-blue',style:{position:'relative',overflow:'hidden'}},
-            h('div',{className:'vb-glow',style:{bottom:'-40px',left:'-30px',width:'170px',height:'170px',background:'rgba(59,130,246,0.12)'}}),
-            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Spend Trend & Forecast'),
-            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:16}},'Actual spend + 2-month projection'),
-            h('div',{style:{position:'relative',zIndex:1,textAlign:'center',padding:'28px 0 20px'}},
-              h('div',{style:{fontSize:28,marginBottom:8}},'📊'),
-              h('div',{style:{fontSize:12,color:C.muted,fontWeight:500}},'Awaiting invoice dates'),
-              h('div',{style:{fontSize:11,color:C.faint,marginTop:4}},'Ensure invoices have a date field for trend data')
-            )
-          );
+          if(!keys.length)return null;
           var vals=keys.map(function(k){return months[k];});
           var maxV=Math.max.apply(null,vals)||1;
           // Simple linear forecast for next 2 months
@@ -2378,39 +2418,37 @@ function Dashboard(props){
           var f2=Math.max(0,intercept+slope*(n+1));
           var allVals=vals.concat([f1,f2]);
           var maxAll=Math.max.apply(null,allVals)||1;
-          var W=280,H=150,pad=6;
+          var W=280,H=90,pad=6;
           var barW=Math.floor((W-pad*2)/(allVals.length+1));
           var fmt2=function(v){return v>=1e7?'₹'+(v/1e7).toFixed(1)+'Cr':v>=1e5?'₹'+(v/1e5).toFixed(1)+'L':'₹'+(v/1000).toFixed(0)+'K';};
           var allLabels=keys.concat(['F+1','F+2']);
           var bars=allVals.map(function(v,i){
             var x=pad+i*(barW+2);
-            var bh=Math.round((v/maxAll)*(H-30));
+            var bh=Math.round((v/maxAll)*(H-20));
             var isForecast=i>=keys.length;
             return h('g',{key:i},
               h('rect',{x:x,y:H-20-bh,width:barW,height:bh,rx:2,
                 fill:isForecast?C.amber+'60':C.blue,
                 stroke:isForecast?C.amber:'none',strokeWidth:isForecast?1:0,
                 strokeDasharray:isForecast?'3,2':'none'}),
-              h('text',{x:x+barW/2,y:H-6,textAnchor:'middle',fontSize:10,fill:C.faint},allLabels[i].replace(/\d{4}-/,'')),
-              bh>12?h('text',{x:x+barW/2,y:H-32-bh,textAnchor:'middle',fontSize:10,fontWeight:'bold',fill:isForecast?C.amber:C.blue},fmt2(v)):null
+              h('text',{x:x+barW/2,y:H-8,textAnchor:'middle',fontSize:7,fill:C.faint},allLabels[i].replace(/\d{4}-/,'')),
+              bh>12?h('text',{x:x+barW/2,y:H-22-bh,textAnchor:'middle',fontSize:6,fill:isForecast?C.amber:C.muted},fmt2(v)):null
             );
           });
-          return h('div',{className:'card vb-card-blue',style:{position:'relative',overflow:'hidden'}},
-            h('div',{className:'vb-glow',style:{bottom:'-40px',left:'-30px',width:'170px',height:'170px',background:'rgba(59,130,246,0.12)'}}),
-            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Spend Trend & Forecast'),
-            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:12}},'Actual spend + 2-month projection'),
-            h('svg',{width:'100%',viewBox:'0 0 '+W+' '+H,style:{overflow:'visible',position:'relative',zIndex:2,display:'block'}},
+          return h('div',{className:'card'},
+            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Spend Trend & Forecast'),
+            h('div',{style:{fontSize:10,color:C.faint,marginBottom:10}},'Actual spend + 2-month projection'),
+            h('svg',{width:'100%',viewBox:'0 0 '+W+' '+H,style:{overflow:'visible'}},
               h('g',null,bars),
-              h('text',{x:W-pad,y:H-4,textAnchor:'end',fontSize:10,fill:C.amber+'aa'},'▨ Forecast')
+              h('text',{x:W-pad,y:H-4,textAnchor:'end',fontSize:7,fill:C.amber+'aa'},'▨ Forecast')
             )
           );
         })(),
 
         // ── Chart 2: Overcharge Rate Trend ────────────────────
         (function(){
-          if(!findings.length)return h('div',{className:'card vb-card-amber',style:{position:'relative',overflow:'hidden'}},
-            h('div',{className:'vb-glow',style:{top:'-40px',right:'-30px',width:'160px',height:'160px',background:'rgba(245,158,11,0.12)'}}),
-            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Overcharge Risk Trend'),
+          if(!findings.length)return h('div',{className:'card'},
+            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Overcharge Risk Trend'),
             h('div',{style:{fontSize:10,color:C.faint,marginBottom:8}},'% of billed amount flagged as overcharge'),
             h('div',{style:{textAlign:'center',padding:'24px 0',fontSize:28}},'✅'),
             h('div',{style:{textAlign:'center',fontSize:11,color:C.green}},'0% overcharge rate — clean audit')
@@ -2420,40 +2458,37 @@ function Dashboard(props){
           findings.forEach(function(f){if(!byV2[f.vendorName])byV2[f.vendorName]=0;byV2[f.vendorName]+=(f.overchargeAmt||0);});
           var vendList=Object.keys(byV2).map(function(n){return{n:n,v:byV2[n]};}).sort(function(a,b){return b.v-a.v;}).slice(0,4);
           var maxV3=vendList.length?vendList[0].v:1;
-          var W2=320,H2=150;
+          var W2=260,H2=90;
+          // Donut for overcharge rate
           var pct=Math.min(rate/100,1);
-          var r=46,cx=58,cy=H2/2;
+          var r=30,cx=45,cy=H2/2;
           var circ=2*Math.PI*r;
           var dash=pct*circ;
           var rateColor=rate>20?C.red:rate>10?C.amber:C.green;
-          return h('div',{className:'card vb-card-amber',style:{position:'relative',overflow:'hidden'}},
-            h('div',{className:'vb-glow',style:{top:'-40px',right:'-30px',width:'160px',height:'160px',background:'rgba(245,158,11,0.14)'}}),
-            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Overcharge Risk'),
-            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:10}},'Rate vs vendor breakdown'),
-            h('svg',{width:'100%',viewBox:'0 0 '+W2+' '+H2,style:{position:'relative',zIndex:2,display:'block'}},
-              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:C.border,strokeWidth:10}),
-              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:rateColor,strokeWidth:10,
-                strokeDasharray:dash+' '+(circ-dash),strokeLinecap:'round',
+          return h('div',{className:'card'},
+            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Overcharge Risk'),
+            h('div',{style:{fontSize:10,color:C.faint,marginBottom:8}},'Rate vs vendor breakdown'),
+            h('svg',{width:'100%',viewBox:'0 0 '+W2+' '+H2},
+              // Donut
+              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:C.border,strokeWidth:8}),
+              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:rateColor,strokeWidth:8,
+                strokeDasharray:dash+' '+(circ-dash),
+                strokeLinecap:'round',
                 transform:'rotate(-90 '+cx+' '+cy+')'}),
-              h('text',{x:cx,y:cy-5,textAnchor:'middle',fontSize:17,fontWeight:'bold',fill:rateColor},rate.toFixed(1)+'%'),
-              h('text',{x:cx,y:cy+12,textAnchor:'middle',fontSize:9,fill:C.faint},'OVERCHARGE'),
-              h('line',{x1:116,y1:10,x2:116,y2:H2-10,stroke:'rgba(255,255,255,0.06)',strokeWidth:1}),
-              h('g',{transform:'translate(124,10)'},
-                vendList.length===0
-                  ? h('text',{x:0,y:65,fontSize:11,fill:C.faint},'No overcharges found')
-                  : vendList.map(function(v,i){
-                      var maxBarW=170;
-                      var bw=Math.max(4,Math.round((v.v/maxV3)*maxBarW));
-                      var y2=i*32;
-                      var nm=v.n.length>18?v.n.slice(0,18)+'…':v.n;
-                      var amt='₹'+(v.v>=1e5?(v.v/1e5).toFixed(1)+'L':(v.v/1000).toFixed(0)+'K');
-                      return h('g',{key:i},
-                        h('text',{x:0,y:y2+11,fontSize:10,fontWeight:'500',fill:'rgba(255,255,255,0.6)'},nm),
-                        h('rect',{x:0,y:y2+15,width:bw,height:8,rx:3,fill:C.red+'70'}),
-                        h('rect',{x:0,y:y2+15,width:bw,height:8,rx:3,fill:'none',stroke:C.red,strokeWidth:'0.5'}),
-                        h('text',{x:bw+5,y:y2+23,fontSize:10,fontWeight:'bold',fill:C.red},amt)
-                      );
-                    })
+              h('text',{x:cx,y:cy-4,textAnchor:'middle',fontSize:13,fontWeight:'bold',fill:rateColor},rate.toFixed(1)+'%'),
+              h('text',{x:cx,y:cy+10,textAnchor:'middle',fontSize:7,fill:C.faint},'overcharge'),
+              // Vendor bars on right
+              h('g',{transform:'translate(95,8)'},
+                vendList.map(function(v,i){
+                  var bw=Math.round((v.v/maxV3)*130);
+                  var y2=i*20;
+                  var nm=v.n.length>14?v.n.slice(0,14)+'…':v.n;
+                  return h('g',{key:i},
+                    h('text',{x:0,y:y2+10,fontSize:7.5,fill:C.muted},nm),
+                    h('rect',{x:0,y:y2+13,width:bw,height:5,rx:2,fill:C.red+'80'}),
+                    h('text',{x:bw+3,y:y2+18,fontSize:7,fill:C.red},'₹'+(v.v/1000).toFixed(0)+'K')
+                  );
+                })
               )
             )
           );
@@ -2469,62 +2504,44 @@ function Dashboard(props){
           findings.forEach(function(f){typeCount[f.type]=(typeCount[f.type]||0)+1;});
           var topTypes=Object.keys(typeCount).sort(function(a,b){return typeCount[b]-typeCount[a];}).slice(0,4);
           var typeLabels2={CALC_ERROR:'Calc Errors',GST_RATE:'GST Rate',FRAUD:'Fraud',PRICING:'Pricing',SURCHARGE:'Surcharge',DUPLICATE:'Duplicate',COMPLIANCE:'Compliance'};
-          // Wider canvas: 340 wide — pie left, legend right with full space
-          var W3=340,H3=150,cx3=58,cy3=H3/2,r3Outer=52,r3Inner=32;
+          var W3=260,H3=90,cx3=42,cy3=H3/2,r3=32;
+          var segments=[];
+          var startAngle=-Math.PI/2;
           var typeColorsArr=[C.red,C.amber,C.blue,C.purple,'#06B6D4',C.green];
           var allTypes=Object.keys(typeCount);
           var totalFindings=findings.length||1;
-          // Build donut segments (ring, not filled pie)
-          var donutSegs=[];
-          var startAngle=-Math.PI/2;
           allTypes.forEach(function(t,ti){
             var ang=(typeCount[t]/totalFindings)*2*Math.PI;
-            var col=typeColorsArr[ti%typeColorsArr.length];
-            var gap=0.04; // small gap between segments
-            var a0=startAngle+gap/2, a1=startAngle+ang-gap/2;
-            if(allTypes.length===1){a0=startAngle;a1=startAngle+ang;}
-            // Outer arc points
-            var ox1=cx3+r3Outer*Math.cos(a0),oy1=cy3+r3Outer*Math.sin(a0);
-            var ox2=cx3+r3Outer*Math.cos(a1),oy2=cy3+r3Outer*Math.sin(a1);
-            // Inner arc points
-            var ix1=cx3+r3Inner*Math.cos(a1),iy1=cy3+r3Inner*Math.sin(a1);
-            var ix2=cx3+r3Inner*Math.cos(a0),iy2=cy3+r3Inner*Math.sin(a0);
+            var x1=cx3+r3*Math.cos(startAngle);var y1=cy3+r3*Math.sin(startAngle);
+            var x2=cx3+r3*Math.cos(startAngle+ang);var y2=cy3+r3*Math.sin(startAngle+ang);
             var lg=ang>Math.PI?1:0;
-            var d='M '+ox1+' '+oy1+' A '+r3Outer+' '+r3Outer+' 0 '+lg+' 1 '+ox2+' '+oy2
-               +' L '+ix1+' '+iy1+' A '+r3Inner+' '+r3Inner+' 0 '+lg+' 0 '+ix2+' '+iy2+' Z';
-            donutSegs.push(h('path',{key:t,d:d,fill:col,opacity:0.85}));
+            var col=typeColorsArr[ti%typeColorsArr.length];
+            if(allTypes.length===1){
+              segments.push(h('circle',{key:t,cx:cx3,cy:cy3,r:r3,fill:'none',stroke:col,strokeWidth:7}));
+            } else {
+              segments.push(h('path',{key:t,d:'M '+cx3+' '+cy3+' L '+x1+' '+y1+' A '+r3+' '+r3+' 0 '+lg+' 1 '+x2+' '+y2+' Z',fill:col+'cc',stroke:C.panel,strokeWidth:1}));
+            }
             startAngle+=ang;
           });
-          return h('div',{className:'card vb-card-mixed',style:{position:'relative',overflow:'hidden'}},
-            h('div',{className:'vb-glow',style:{top:'-30px',left:'-20px',width:'150px',height:'150px',background:'rgba(139,92,246,0.12)'}}),
-            h('div',{className:'vb-glow',style:{bottom:'-30px',right:'-20px',width:'130px',height:'130px',background:'rgba(239,68,68,0.10)'}}),
-            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Audit Health Score'),
-            h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:10}},'Invoice pass rate + finding breakdown'),
-            h('svg',{width:'100%',viewBox:'0 0 '+W3+' '+H3,style:{position:'relative',zIndex:2,display:'block'}},
+          return h('div',{className:'card'},
+            h('div',{style:{fontSize:12,fontWeight:700,marginBottom:2}},'Audit Health Score'),
+            h('div',{style:{fontSize:10,color:C.faint,marginBottom:8}},'Invoice pass rate + finding breakdown'),
+            h('svg',{width:'100%',viewBox:'0 0 '+W3+' '+H3},
               findings.length===0
                 ? h('g',null,
-                    h('circle',{cx:cx3,cy:cy3,r:r3Outer,fill:C.green+'20',stroke:C.green,strokeWidth:2}),
-                    h('circle',{cx:cx3,cy:cy3,r:r3Inner,fill:C.panel}),
-                    h('text',{x:cx3,y:cy3+1,textAnchor:'middle',dominantBaseline:'middle',fontSize:20,fill:C.green},'✓')
+                    h('circle',{cx:cx3,cy:cy3,r:r3,fill:C.green+'20',stroke:C.green,strokeWidth:2}),
+                    h('text',{x:cx3,y:cy3+1,textAnchor:'middle',dominantBaseline:'middle',fontSize:18,fill:C.green},'✓')
                   )
-                : h('g',null,donutSegs),
-              // Centre hole overlay + score text (always on top)
-              findings.length>0?h('circle',{cx:cx3,cy:cy3,r:r3Inner-1,fill:'#0D1117'}):null,
-              h('text',{x:cx3,y:cy3-5,textAnchor:'middle',fontSize:16,fontWeight:'bold',fill:scoreColor},score+'%'),
-              h('text',{x:cx3,y:cy3+11,textAnchor:'middle',fontSize:8,fill:C.faint,letterSpacing:'1'},'HEALTH'),
-              // Divider
-              h('line',{x1:122,y1:8,x2:122,y2:H3-8,stroke:'rgba(255,255,255,0.06)',strokeWidth:1}),
-              // Legend — starts at x=130, each row 26px tall, text truncated to fit, % right-aligned at x=330
-              h('g',{transform:'translate(130,14)'},
+                : h('g',null,segments),
+              h('text',{x:cx3,y:cy3-4,textAnchor:'middle',fontSize:14,fontWeight:'bold',fill:scoreColor},score+'%'),
+              h('text',{x:cx3,y:cy3+10,textAnchor:'middle',fontSize:7,fill:C.faint},'health'),
+              h('g',{transform:'translate(92,6)'},
                 topTypes.map(function(t,i){
                   var col2=typeColorsArr[allTypes.indexOf(t)%typeColorsArr.length];
-                  var lbl=(typeLabels2[t]||t);
-                  var pctTxt=Math.round((typeCount[t]/totalFindings)*100)+'%';
-                  var cntTxt='('+typeCount[t]+')';
                   return h('g',{key:t},
-                    h('rect',{x:0,y:i*26,width:10,height:10,rx:2,fill:col2}),
-                    h('text',{x:16,y:i*26+9,fontSize:10,fill:'rgba(255,255,255,0.65)',fontWeight:'500'},lbl+' '+cntTxt),
-                    h('text',{x:196,y:i*26+9,fontSize:11,fontWeight:'bold',fill:col2,textAnchor:'end'},pctTxt)
+                    h('rect',{x:0,y:i*18,width:7,height:7,rx:2,fill:col2}),
+                    h('text',{x:10,y:i*18+7,fontSize:8,fill:C.muted},(typeLabels2[t]||t)+' ('+typeCount[t]+')'),
+                    h('text',{x:155,y:i*18+7,fontSize:8,fontWeight:'bold',fill:col2},Math.round((typeCount[t]/totalFindings)*100)+'%')
                   );
                 })
               )
@@ -2535,36 +2552,34 @@ function Dashboard(props){
     ):null,
 
     // ── PIPELINE + VENDOR DIST ─────────────────────────────────
-    h('div',{style:{position:'relative',zIndex:1,display:'grid',gridTemplateColumns:'1.5fr 1fr',gap:12}},
-      h('div',{className:'card vb-card-green',style:{position:'relative',overflow:'hidden'}},
-        h('div',{className:'vb-glow',style:{bottom:'-40px',right:'-20px',width:'150px',height:'150px',background:'rgba(16,185,129,0.10)'}}),
-        h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Audit Pipeline'),
-        h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:16}},'Live document processing status'),
-        h('div',{style:{position:'relative',zIndex:2,display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}},
+    h('div',{style:{display:'grid',gridTemplateColumns:'1.5fr 1fr',gap:12}},
+      h('div',{className:'card'},
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:4}},'Audit Pipeline'),
+        h('div',{style:{fontSize:11,color:C.faint,marginBottom:14}},'Live document processing status'),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}},
           pipeline.map(function(p){
             return h('div',{key:p.stage,style:{textAlign:'center'}},
-              h('div',{style:{background:p.c+'18',border:'1px solid '+p.c+'40',borderRadius:10,padding:'14px 6px',marginBottom:6,boxShadow:'0 0 18px '+p.c+'18'}},
-                h('div',{style:{fontSize:26,fontWeight:800,color:p.c,fontFamily:"'Instrument Serif',serif",textShadow:'0 0 16px '+p.c+'99'}},p.cnt)
+              h('div',{style:{background:p.c+'18',border:'1px solid '+p.c+'35',borderRadius:8,padding:'10px 6px',marginBottom:5}},
+                h('div',{style:{fontSize:20,fontWeight:800,color:p.c,fontFamily:"'DM Mono',monospace"}},p.cnt)
               ),
-              h('div',{style:{fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:p.c,opacity:0.5,lineHeight:1.4}},p.stage)
+              h('div',{style:{fontSize:10,color:C.muted,lineHeight:1.4}},p.stage)
             );
           })
         )
       ),
-      h('div',{className:'card vb-card-violet',style:{position:'relative',overflow:'hidden'}},
-        h('div',{className:'vb-glow',style:{top:'-30px',right:'-20px',width:'130px',height:'130px',background:'rgba(139,92,246,0.12)'}}),
-        h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Vendor Distribution'),
-        h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:16}},'By service category'),
+      h('div',{className:'card'},
+        h('div',{style:{fontSize:13,fontWeight:700,marginBottom:4}},'Vendor Distribution'),
+        h('div',{style:{fontSize:11,color:C.faint,marginBottom:14}},'By service category'),
         vendorMaster.length===0
           ? h(Empty,{msg:'No vendors yet',sub:'Add vendors in Vendor Master'})
-          : h('div',{style:{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:6}},
+          : h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
               catData.map(function(d){
                 return h('div',{key:d.n,style:{display:'flex',alignItems:'center',gap:8}},
-                  h('div',{style:{width:9,height:9,borderRadius:'2px',background:d.c,flexShrink:0,boxShadow:'0 0 6px '+d.c+'99'}}),
-                  h('div',{style:{flex:1,fontSize:13,fontWeight:500,color:C.muted}},d.n),
-                  h('div',{style:{fontSize:13,fontWeight:700,color:d.c,fontFamily:"'Geist Mono',monospace",minWidth:18,textAlign:'right'}},d.cnt),
-                  h('div',{style:{width:90,height:7,background:'rgba(255,255,255,0.05)',borderRadius:4,overflow:'hidden'}},
-                    h('div',{style:{width:((d.cnt/vendorMaster.length)*100)+'%',height:'100%',background:'linear-gradient(90deg,'+d.c+','+d.c+'88)',borderRadius:4,boxShadow:'0 0 8px '+d.c+'55'}})
+                  h('div',{style:{width:8,height:8,borderRadius:'50%',background:d.c,flexShrink:0}}),
+                  h('div',{style:{flex:1,fontSize:12,color:C.muted}},d.n),
+                  h('div',{style:{fontSize:12,fontWeight:700,color:d.c,fontFamily:"'DM Mono',monospace"}},d.cnt),
+                  h('div',{style:{width:80,height:4,background:'rgba(255,255,255,0.07)',borderRadius:2,overflow:'hidden'}},
+                    h('div',{style:{width:((d.cnt/vendorMaster.length)*100)+'%',height:'100%',background:d.c,borderRadius:2}})
                   )
                 );
               })
