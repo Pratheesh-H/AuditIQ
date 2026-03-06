@@ -2516,10 +2516,9 @@ function Dashboard(props){
           findings.forEach(function(f){if(!byV2[f.vendorName])byV2[f.vendorName]=0;byV2[f.vendorName]+=(f.overchargeAmt||0);});
           var vendList=Object.keys(byV2).map(function(n){return{n:n,v:byV2[n]};}).sort(function(a,b){return b.v-a.v;}).slice(0,4);
           var maxV3=vendList.length?vendList[0].v:1;
-          var W2=260,H2=150;
-          // Donut for overcharge rate
+          var W2=320,H2=150;
           var pct=Math.min(rate/100,1);
-          var r=46,cx=55,cy=H2/2;
+          var r=46,cx=58,cy=H2/2;
           var circ=2*Math.PI*r;
           var dash=pct*circ;
           var rateColor=rate>20?C.red:rate>10?C.amber:C.green;
@@ -2528,26 +2527,29 @@ function Dashboard(props){
             h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Instrument Serif',serif",fontSize:17,marginBottom:3}},'Overcharge Risk'),
             h('div',{style:{position:'relative',zIndex:1,fontFamily:"'Geist Mono',monospace",fontSize:9,letterSpacing:'1.5px',textTransform:'uppercase',color:C.faint,marginBottom:10}},'Rate vs vendor breakdown'),
             h('svg',{width:'100%',viewBox:'0 0 '+W2+' '+H2,style:{position:'relative',zIndex:2,display:'block'}},
-              // Donut
-              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:C.border,strokeWidth:8}),
-              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:rateColor,strokeWidth:8,
-                strokeDasharray:dash+' '+(circ-dash),
-                strokeLinecap:'round',
+              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:C.border,strokeWidth:10}),
+              h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:rateColor,strokeWidth:10,
+                strokeDasharray:dash+' '+(circ-dash),strokeLinecap:'round',
                 transform:'rotate(-90 '+cx+' '+cy+')'}),
-              h('text',{x:cx,y:cy-4,textAnchor:'middle',fontSize:18,fontWeight:'bold',fill:rateColor},rate.toFixed(1)+'%'),
-              h('text',{x:cx,y:cy+12,textAnchor:'middle',fontSize:10,fill:C.faint},'overcharge'),
-              // Vendor bars on right
-              h('g',{transform:'translate(112,14)'},
-                vendList.map(function(v,i){
-                  var bw=Math.round((v.v/maxV3)*130);
-                  var y2=i*20;
-                  var nm=v.n.length>16?v.n.slice(0,16)+'…':v.n;
-                  return h('g',{key:i},
-                    h('text',{x:0,y:y2+11,fontSize:10,fontWeight:'500',fill:C.muted},nm),
-                    h('rect',{x:0,y:y2+14,width:bw,height:8,rx:3,fill:C.red+'80'}),
-                    h('text',{x:bw+4,y:y2+22,fontSize:10,fontWeight:'bold',fill:C.red},'₹'+(v.v/1000).toFixed(0)+'K')
-                  );
-                })
+              h('text',{x:cx,y:cy-5,textAnchor:'middle',fontSize:17,fontWeight:'bold',fill:rateColor},rate.toFixed(1)+'%'),
+              h('text',{x:cx,y:cy+12,textAnchor:'middle',fontSize:9,fill:C.faint},'OVERCHARGE'),
+              h('line',{x1:116,y1:10,x2:116,y2:H2-10,stroke:'rgba(255,255,255,0.06)',strokeWidth:1}),
+              h('g',{transform:'translate(124,10)'},
+                vendList.length===0
+                  ? h('text',{x:0,y:65,fontSize:11,fill:C.faint},'No overcharges found')
+                  : vendList.map(function(v,i){
+                      var maxBarW=170;
+                      var bw=Math.max(4,Math.round((v.v/maxV3)*maxBarW));
+                      var y2=i*32;
+                      var nm=v.n.length>18?v.n.slice(0,18)+'…':v.n;
+                      var amt='₹'+(v.v>=1e5?(v.v/1e5).toFixed(1)+'L':(v.v/1000).toFixed(0)+'K');
+                      return h('g',{key:i},
+                        h('text',{x:0,y:y2+11,fontSize:10,fontWeight:'500',fill:'rgba(255,255,255,0.6)'},nm),
+                        h('rect',{x:0,y:y2+15,width:bw,height:8,rx:3,fill:C.red+'70'}),
+                        h('rect',{x:0,y:y2+15,width:bw,height:8,rx:3,fill:'none',stroke:C.red,strokeWidth:'0.5'}),
+                        h('text',{x:bw+5,y:y2+23,fontSize:10,fontWeight:'bold',fill:C.red},amt)
+                      );
+                    })
               )
             )
           );
@@ -2563,23 +2565,30 @@ function Dashboard(props){
           findings.forEach(function(f){typeCount[f.type]=(typeCount[f.type]||0)+1;});
           var topTypes=Object.keys(typeCount).sort(function(a,b){return typeCount[b]-typeCount[a];}).slice(0,4);
           var typeLabels2={CALC_ERROR:'Calc Errors',GST_RATE:'GST Rate',FRAUD:'Fraud',PRICING:'Pricing',SURCHARGE:'Surcharge',DUPLICATE:'Duplicate',COMPLIANCE:'Compliance'};
-          var W3=260,H3=150,cx3=46,cy3=H3/2,r3=44;
-          var segments=[];
-          var startAngle=-Math.PI/2;
+          // Wider canvas: 340 wide — pie left, legend right with full space
+          var W3=340,H3=150,cx3=58,cy3=H3/2,r3Outer=52,r3Inner=32;
           var typeColorsArr=[C.red,C.amber,C.blue,C.purple,'#06B6D4',C.green];
           var allTypes=Object.keys(typeCount);
           var totalFindings=findings.length||1;
+          // Build donut segments (ring, not filled pie)
+          var donutSegs=[];
+          var startAngle=-Math.PI/2;
           allTypes.forEach(function(t,ti){
             var ang=(typeCount[t]/totalFindings)*2*Math.PI;
-            var x1=cx3+r3*Math.cos(startAngle);var y1=cy3+r3*Math.sin(startAngle);
-            var x2=cx3+r3*Math.cos(startAngle+ang);var y2=cy3+r3*Math.sin(startAngle+ang);
-            var lg=ang>Math.PI?1:0;
             var col=typeColorsArr[ti%typeColorsArr.length];
-            if(allTypes.length===1){
-              segments.push(h('circle',{key:t,cx:cx3,cy:cy3,r:r3,fill:'none',stroke:col,strokeWidth:7}));
-            } else {
-              segments.push(h('path',{key:t,d:'M '+cx3+' '+cy3+' L '+x1+' '+y1+' A '+r3+' '+r3+' 0 '+lg+' 1 '+x2+' '+y2+' Z',fill:col+'cc',stroke:C.panel,strokeWidth:1}));
-            }
+            var gap=0.04; // small gap between segments
+            var a0=startAngle+gap/2, a1=startAngle+ang-gap/2;
+            if(allTypes.length===1){a0=startAngle;a1=startAngle+ang;}
+            // Outer arc points
+            var ox1=cx3+r3Outer*Math.cos(a0),oy1=cy3+r3Outer*Math.sin(a0);
+            var ox2=cx3+r3Outer*Math.cos(a1),oy2=cy3+r3Outer*Math.sin(a1);
+            // Inner arc points
+            var ix1=cx3+r3Inner*Math.cos(a1),iy1=cy3+r3Inner*Math.sin(a1);
+            var ix2=cx3+r3Inner*Math.cos(a0),iy2=cy3+r3Inner*Math.sin(a0);
+            var lg=ang>Math.PI?1:0;
+            var d='M '+ox1+' '+oy1+' A '+r3Outer+' '+r3Outer+' 0 '+lg+' 1 '+ox2+' '+oy2
+               +' L '+ix1+' '+iy1+' A '+r3Inner+' '+r3Inner+' 0 '+lg+' 0 '+ix2+' '+iy2+' Z';
+            donutSegs.push(h('path',{key:t,d:d,fill:col,opacity:0.85}));
             startAngle+=ang;
           });
           return h('div',{className:'card vb-card-mixed',style:{position:'relative',overflow:'hidden'}},
@@ -2590,19 +2599,28 @@ function Dashboard(props){
             h('svg',{width:'100%',viewBox:'0 0 '+W3+' '+H3,style:{position:'relative',zIndex:2,display:'block'}},
               findings.length===0
                 ? h('g',null,
-                    h('circle',{cx:cx3,cy:cy3,r:r3,fill:C.green+'20',stroke:C.green,strokeWidth:2}),
-                    h('text',{x:cx3,y:cy3+1,textAnchor:'middle',dominantBaseline:'middle',fontSize:18,fill:C.green},'✓')
+                    h('circle',{cx:cx3,cy:cy3,r:r3Outer,fill:C.green+'20',stroke:C.green,strokeWidth:2}),
+                    h('circle',{cx:cx3,cy:cy3,r:r3Inner,fill:C.panel}),
+                    h('text',{x:cx3,y:cy3+1,textAnchor:'middle',dominantBaseline:'middle',fontSize:20,fill:C.green},'✓')
                   )
-                : h('g',null,segments),
-              h('text',{x:cx3,y:cy3-4,textAnchor:'middle',fontSize:18,fontWeight:'bold',fill:scoreColor},score+'%'),
-              h('text',{x:cx3,y:cy3+12,textAnchor:'middle',fontSize:10,fill:C.faint},'health'),
-              h('g',{transform:'translate(100,12)'},
+                : h('g',null,donutSegs),
+              // Centre hole overlay + score text (always on top)
+              findings.length>0?h('circle',{cx:cx3,cy:cy3,r:r3Inner-1,fill:'#0D1117'}):null,
+              h('text',{x:cx3,y:cy3-5,textAnchor:'middle',fontSize:16,fontWeight:'bold',fill:scoreColor},score+'%'),
+              h('text',{x:cx3,y:cy3+11,textAnchor:'middle',fontSize:8,fill:C.faint,letterSpacing:'1'},'HEALTH'),
+              // Divider
+              h('line',{x1:122,y1:8,x2:122,y2:H3-8,stroke:'rgba(255,255,255,0.06)',strokeWidth:1}),
+              // Legend — starts at x=130, each row 26px tall, text truncated to fit, % right-aligned at x=330
+              h('g',{transform:'translate(130,14)'},
                 topTypes.map(function(t,i){
                   var col2=typeColorsArr[allTypes.indexOf(t)%typeColorsArr.length];
+                  var lbl=(typeLabels2[t]||t);
+                  var pctTxt=Math.round((typeCount[t]/totalFindings)*100)+'%';
+                  var cntTxt='('+typeCount[t]+')';
                   return h('g',{key:t},
-                    h('rect',{x:0,y:i*22,width:9,height:9,rx:2,fill:col2}),
-                    h('text',{x:14,y:i*22+9,fontSize:11,fill:C.muted},(typeLabels2[t]||t)+' ('+typeCount[t]+')'),
-                    h('text',{x:148,y:i*22+9,fontSize:11,fontWeight:'bold',fill:col2},Math.round((typeCount[t]/totalFindings)*100)+'%')
+                    h('rect',{x:0,y:i*26,width:10,height:10,rx:2,fill:col2}),
+                    h('text',{x:16,y:i*26+9,fontSize:10,fill:'rgba(255,255,255,0.65)',fontWeight:'500'},lbl+' '+cntTxt),
+                    h('text',{x:196,y:i*26+9,fontSize:11,fontWeight:'bold',fill:col2,textAnchor:'end'},pctTxt)
                   );
                 })
               )
